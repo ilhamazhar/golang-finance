@@ -2,4 +2,7 @@ package domain
 
 import "errors"
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound         = errors.New("not found")
+	ErrEmailNotVerified = errors.New("email not verified")
+)

@@ -10,12 +10,20 @@ import (
 
 type Config struct {
 	ServerPort          string
+	AppEnv              string // "development" | "production"; gates dev-only conveniences
+	AppBaseURL          string // public base URL, used to build email links
 	DatabaseURL         string
 	RedisURL            string
 	JWTSecret           string
 	JWTRefreshSecret    string
 	JWTExpiry           time.Duration
 	JWTRefreshExpiry    time.Duration
+	EmailVerifyExpiry   time.Duration // how long an email-verification token is valid
+	SMTPHost            string        // if empty, emails are logged instead of sent
+	SMTPPort            string
+	SMTPUsername        string
+	SMTPPassword        string
+	SMTPFrom            string // From address, e.g. "Azhar Finance <no-reply@azhar.test>"
 	XenditAPIKey        string
 	XenditCallbackToken string
 	RateLimitAuth       int           // max requests per period for /auth/* (IP-based)
@@ -33,6 +41,10 @@ func Load() (Config, error) {
 	jwtRefreshExpiry, err := strconv.ParseFloat(getEnv("JWT_REFRESH_EXPIRY_HOURS", "168"), 64)
 	if err != nil {
 		return Config{}, errors.New("invalid JWT_REFRESH_EXPIRY_HOURS")
+	}
+	emailVerifyExpiry, err := strconv.ParseFloat(getEnv("EMAIL_VERIFY_EXPIRY_HOURS", "24"), 64)
+	if err != nil {
+		return Config{}, errors.New("invalid EMAIL_VERIFY_EXPIRY_HOURS")
 	}
 
 	rateLimitAuth, err := strconv.Atoi(getEnv("RATE_LIMIT_AUTH_MAX", "10"))
@@ -54,12 +66,20 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		ServerPort:          getEnv("SERVER_PORT", "8080"),
+		AppEnv:              getEnv("APP_ENV", "development"),
+		AppBaseURL:          getEnv("APP_BASE_URL", "http://localhost:8080"),
 		DatabaseURL:         os.Getenv("DATABASE_URL"),
 		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379"),
 		JWTSecret:           os.Getenv("JWT_SECRET"),
 		JWTRefreshSecret:    os.Getenv("JWT_REFRESH_SECRET"),
 		JWTExpiry:           time.Duration(jwtExpiry * float64(time.Hour)),
 		JWTRefreshExpiry:    time.Duration(jwtRefreshExpiry * float64(time.Hour)),
+		EmailVerifyExpiry:   time.Duration(emailVerifyExpiry * float64(time.Hour)),
+		SMTPHost:            os.Getenv("SMTP_HOST"),
+		SMTPPort:            getEnv("SMTP_PORT", "587"),
+		SMTPUsername:        os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:        os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:            getEnv("SMTP_FROM", "no-reply@azhar.test"),
 		XenditAPIKey:        os.Getenv("XENDIT_API_KEY"),
 		XenditCallbackToken: os.Getenv("XENDIT_CALLBACK_TOKEN"),
 		RateLimitAuth:       rateLimitAuth,

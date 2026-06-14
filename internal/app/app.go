@@ -12,6 +12,7 @@ import (
 	"github.com/ilhamazhar/golang-gpt/internal/repository"
 	"github.com/ilhamazhar/golang-gpt/internal/service"
 	"github.com/ilhamazhar/golang-gpt/pkg/jwt"
+	"github.com/ilhamazhar/golang-gpt/pkg/mailer"
 	tokenstore "github.com/ilhamazhar/golang-gpt/pkg/token"
 	xenclient "github.com/ilhamazhar/golang-gpt/pkg/xendit"
 	"gorm.io/driver/postgres"
@@ -54,12 +55,18 @@ func New(cfg config.Config) (*App, error) {
 	}
 	rateLimiter := redis_rate.NewLimiter(store.Client())
 
+	// Use SMTP when configured; otherwise fall back to logging emails (local dev).
+	var mail domain.Mailer = mailer.LogMailer{}
+	if cfg.SMTPHost != "" {
+		mail = mailer.NewSMTP(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom)
+	}
+
 	// --- Repositories ---
 	userRepo := repository.NewUserRepository(db)
 	paymentRepo := repository.NewPaymentRepository(db)
 
 	// --- Services ---
-	authService := service.NewAuthService(userRepo, store, jwtManager, refreshManager, cfg.JWTRefreshExpiry)
+	authService := service.NewAuthService(userRepo, store, mail, jwtManager, refreshManager, cfg.JWTRefreshExpiry, cfg.EmailVerifyExpiry, cfg.AppBaseURL, cfg.AppEnv != "production")
 	paymentService := service.NewPaymentService(paymentRepo, xenditClient)
 	userService := service.NewUserService(userRepo)
 

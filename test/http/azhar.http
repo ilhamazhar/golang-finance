@@ -31,11 +31,37 @@ Content-Type: application/json
 > {%
 client.test("register 201", function () {
     client.assert(response.status === 201, "status " + response.status);
-    client.assert(response.body.data.id, "no id in body");
-    client.assert(response.body.data.email, "no email in body");
+    client.assert(response.body.data.user.id, "no id in body");
+    client.assert(response.body.data.user.email, "no email in body");
+    client.assert(response.body.data.verification_token, "no verification_token (dev mode only)");
 });
-client.global.set("user_id", response.body.data.id);
-client.global.set("registered_email", response.body.data.email);
+client.global.set("user_id", response.body.data.user.id);
+client.global.set("registered_email", response.body.data.user.email);
+client.global.set("verification_token", response.body.data.verification_token);
+%}
+
+### Login BEFORE verification -> 403 (email not verified)
+POST {{base_url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{registered_email}}",
+  "password": "{{test_password}}"
+}
+
+> {%
+client.test("login blocked until verified 403", function () {
+    client.assert(response.status === 403, "status " + response.status);
+});
+%}
+
+### Verify email with the token from register (real flow: link sent by email)
+GET {{base_url}}/auth/verify?token={{verification_token}}
+
+> {%
+client.test("email verified 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+});
 %}
 
 ### Login -> capture access_token + refresh_token

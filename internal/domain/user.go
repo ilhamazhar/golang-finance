@@ -12,18 +12,29 @@ type TokenStore interface {
 	Save(ctx context.Context, token, userID string, ttl time.Duration) error
 	Exists(ctx context.Context, token string) (string, error)
 	Revoke(ctx context.Context, token string) error
+
+	// Email verification tokens (stored under a separate namespace).
+	SaveVerification(ctx context.Context, token, userID string, ttl time.Duration) error
+	GetVerification(ctx context.Context, token string) (string, error)
+	RevokeVerification(ctx context.Context, token string) error
+}
+
+// Mailer sends transactional email.
+type Mailer interface {
+	Send(ctx context.Context, to, subject, body string) error
 }
 
 // --- GORM Model ---
 
 type User struct {
-	ID           uuid.UUID      `json:"id" gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	Name         string         `json:"name" gorm:"not null"`
-	Email        string         `json:"email" gorm:"not null"`
-	PasswordHash string         `json:"-" gorm:"not null"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
+	ID              uuid.UUID      `json:"id" gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	Name            string         `json:"name" gorm:"not null"`
+	Email           string         `json:"email" gorm:"not null"`
+	PasswordHash    string         `json:"-" gorm:"not null"`
+	EmailVerifiedAt *time.Time     `json:"email_verified_at,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 // --- Request DTOs ---
@@ -48,6 +59,10 @@ type LogoutRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
+type ResendVerificationRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
 type UpdateUserRequest struct {
 	Name  string `json:"name" validate:"omitempty,max=255"`
 	Email string `json:"email" validate:"omitempty,email"`
@@ -62,11 +77,20 @@ type ChangePasswordRequest struct {
 // --- Response DTOs (never expose PasswordHash) ---
 
 type UserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	Name            string     `json:"name"`
+	Email           string     `json:"email"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+// RegisterResponse wraps the created user. VerificationToken is populated only
+// in non-production environments so the verify flow can be exercised without a
+// real email provider; it is omitted otherwise.
+type RegisterResponse struct {
+	User              UserResponse `json:"user"`
+	VerificationToken string       `json:"verification_token,omitempty"`
 }
 
 type TokenResponse struct {
@@ -79,11 +103,12 @@ type TokenResponse struct {
 
 func ToUserResponse(u *User) UserResponse {
 	return UserResponse{
-		ID:        u.ID,
-		Name:      u.Name,
-		Email:     u.Email,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
+		ID:              u.ID,
+		Name:            u.Name,
+		Email:           u.Email,
+		EmailVerifiedAt: u.EmailVerifiedAt,
+		CreatedAt:       u.CreatedAt,
+		UpdatedAt:       u.UpdatedAt,
 	}
 }
 
@@ -106,8 +131,10 @@ type UserService interface {
 }
 
 type AuthService interface {
-	Register(ctx context.Context, req RegisterRequest) (UserResponse, error)
+	Register(ctx context.Context, req RegisterRequest) (RegisterResponse, error)
 	Login(ctx context.Context, req LoginRequest) (*TokenResponse, error)
+	VerifyEmail(ctx context.Context, token string) error
+	ResendVerification(ctx context.Context, email string) (string, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*TokenResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetProfile(ctx context.Context, id uuid.UUID) (UserResponse, error)
