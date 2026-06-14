@@ -11,11 +11,12 @@ import (
 )
 
 type AuthHandler struct {
-	auth domain.AuthService
+	auth        domain.AuthService
+	frontendURL string // where the email verify link redirects the browser
 }
 
-func NewAuthHandler(auth domain.AuthService) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuthHandler(auth domain.AuthService, frontendURL string) *AuthHandler {
+	return &AuthHandler{auth: auth, frontendURL: frontendURL}
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -52,15 +53,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	response.OK(c, http.StatusOK, "Logged in successfully", tokens)
 }
 
+// VerifyEmail consumes the token from the email link and redirects the browser
+// back to the frontend login page with a status flag, since the link is opened
+// directly in a browser (not via an API client).
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
 
 	if err := h.auth.VerifyEmail(c.Request.Context(), token); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error(), nil)
+		c.Redirect(http.StatusFound, h.frontendURL+"/login?verified=false")
 		return
 	}
 
-	response.OK(c, http.StatusOK, "Email verified successfully", nil)
+	c.Redirect(http.StatusFound, h.frontendURL+"/login?verified=true")
 }
 
 func (h *AuthHandler) ResendVerification(c *gin.Context) {

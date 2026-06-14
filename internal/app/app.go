@@ -71,7 +71,7 @@ func New(cfg config.Config) (*App, error) {
 	userService := service.NewUserService(userRepo)
 
 	// --- Handlers ---
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, cfg.FrontendURL)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
 	userHandler := handler.NewUserHandler(userService)
 

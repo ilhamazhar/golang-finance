@@ -12,6 +12,7 @@ type Config struct {
 	ServerPort          string
 	AppEnv              string // "development" | "production"; gates dev-only conveniences
 	AppBaseURL          string // public base URL, used to build email links
+	FrontendURL         string // SPA base URL; email verify link redirects here
 	DatabaseURL         string
 	RedisURL            string
 	JWTSecret           string
@@ -68,6 +69,7 @@ func Load() (Config, error) {
 		ServerPort:          getEnv("SERVER_PORT", "8080"),
 		AppEnv:              getEnv("APP_ENV", "development"),
 		AppBaseURL:          getEnv("APP_BASE_URL", "http://localhost:8080"),
+		FrontendURL:         getEnv("FRONTEND_URL", "http://localhost:3000"),
 		DatabaseURL:         os.Getenv("DATABASE_URL"),
 		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379"),
 		JWTSecret:           os.Getenv("JWT_SECRET"),

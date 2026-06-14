@@ -56,11 +56,15 @@ client.test("login blocked until verified 403", function () {
 %}
 
 ### Verify email with the token from register (real flow: link sent by email)
+# Redirects the browser to the frontend; @no-redirect lets us assert the 302.
+# @no-redirect
 GET {{base_url}}/auth/verify?token={{verification_token}}
 
 > {%
-client.test("email verified 200", function () {
-    client.assert(response.status === 200, "status " + response.status);
+client.test("email verified -> redirect to FE login", function () {
+    client.assert(response.status === 302, "status " + response.status);
+    client.assert(response.headers.valueOf("Location").includes("verified=true"),
+        "unexpected Location: " + response.headers.valueOf("Location"));
 });
 %}
 
