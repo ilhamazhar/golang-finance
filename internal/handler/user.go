@@ -1,0 +1,82 @@
+package handler
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/ilhamazhar/golang-gpt/internal/domain"
+	"github.com/ilhamazhar/golang-gpt/pkg/response"
+)
+
+type UserHandler struct {
+	svc domain.UserService
+}
+
+func NewUserHandler(svc domain.UserService) *UserHandler {
+	return &UserHandler{svc: svc}
+}
+
+func (h *UserHandler) GetAll(c *gin.Context) {
+	page, limit := parsePagination(c)
+
+	result, total, err := h.svc.FindAll(c.Request.Context(), page, limit)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
+	pagination := response.NewPagination(page, limit, total)
+	response.OKPaginated(c, http.StatusOK, "Users retrieved", result, pagination)
+}
+
+func (h *UserHandler) GetByID(c *gin.Context) {
+	id, err := parseUUID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id", nil)
+		return
+	}
+
+	result, err := h.svc.FindByID(c.Request.Context(), id)
+	if err != nil {
+		response.Fail(c, http.StatusNotFound, err.Error(), nil)
+		return
+	}
+
+	response.OK(c, http.StatusOK, "User retrieved", result)
+}
+
+func (h *UserHandler) Update(c *gin.Context) {
+	id, err := parseUUID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id", nil)
+		return
+	}
+
+	var req domain.UpdateUserRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.svc.Update(c.Request.Context(), id, req)
+	if err != nil {
+		response.Fail(c, http.StatusConflict, err.Error(), nil)
+		return
+	}
+
+	response.OK(c, http.StatusOK, "User updated", result)
+}
+
+func (h *UserHandler) Delete(c *gin.Context) {
+	id, err := parseUUID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id", nil)
+		return
+	}
+
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		response.Fail(c, http.StatusNotFound, err.Error(), nil)
+		return
+	}
+
+	response.OK(c, http.StatusOK, "User deleted", nil)
+}
