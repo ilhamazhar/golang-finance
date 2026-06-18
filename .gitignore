@@ -30,3 +30,6 @@ Thumbs.db
 
 # HTTP client secrets (JetBrains REST client)
 test/http/http-client.private.env.json
+
+# Generated docs preview
+docs/API.preview.html
