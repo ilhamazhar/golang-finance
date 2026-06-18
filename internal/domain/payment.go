@@ -17,20 +17,24 @@ const (
 )
 
 type Payment struct {
-	ID          uint          `json:"id" gorm:"primaryKey" `
-	UserID      uuid.UUID     `json:"user_id" gorm:"not null;index"`
-	User        User          `json:"-" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
-	OrderRef    string        `json:"order_ref" gorm:"not null;uniqueIndex"`
-	XenditID    string        `json:"xendit_id,omitempty" gorm:"index"`
-	QRString    string        `json:"qr_string,omitempty" gorm:"type:text"`
-	Amount      int64         `json:"amount" gorm:"not null"`
-	Currency    string        `json:"currency" gorm:"default:'IDR'"`
-	Status      PaymentStatus `json:"status" gorm:"default:'PENDING'"`
-	ExpiresAt   *time.Time    `json:"expires_at"`
-	PaidAt      *time.Time    `json:"paid_at"`
-	Description string        `json:"description"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	ID     uint      `json:"id" gorm:"primaryKey" `
+	UserID uuid.UUID `json:"user_id" gorm:"not null;index"`
+	User   User      `json:"-" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	// InstallmentID links this payment to a financing installment. Nil for
+	// standalone QRIS payments; set when paying a Murabahah installment so the
+	// webhook can settle the right installment.
+	InstallmentID *uint         `json:"installment_id,omitempty" gorm:"index"`
+	OrderRef      string        `json:"order_ref" gorm:"not null;uniqueIndex"`
+	XenditID      string        `json:"xendit_id,omitempty" gorm:"index"`
+	QRString      string        `json:"qr_string,omitempty" gorm:"type:text"`
+	Amount        int64         `json:"amount" gorm:"not null"`
+	Currency      string        `json:"currency" gorm:"default:'IDR'"`
+	Status        PaymentStatus `json:"status" gorm:"default:'PENDING'"`
+	ExpiresAt     *time.Time    `json:"expires_at"`
+	PaidAt        *time.Time    `json:"paid_at"`
+	Description   string        `json:"description"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }
 
 // --- Request DTOs ---
@@ -68,6 +72,8 @@ type PaymentRepository interface {
 
 type PaymentService interface {
 	CreateQRIS(ctx context.Context, userID uuid.UUID, req CreateQRISRequest) (*QRISResponse, error)
+	// CreateForInstallment creates a QRIS payment bound to a financing installment.
+	CreateForInstallment(ctx context.Context, userID uuid.UUID, installmentID uint, amount int64, description string) (*QRISResponse, error)
 	GetStatus(ctx context.Context, orderRef string) (*PaymentStatusResponse, error)
 	HandleWebhook(ctx context.Context, callbackToken string, body []byte) error
 }

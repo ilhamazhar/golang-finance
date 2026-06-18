@@ -217,7 +217,213 @@ client.test("status paid", function () {
 %}
 
 
-############################  4. USERS  ######################################
+####################  4. FINANCING (MURABAHAH — SYARIAH)  ###################
+# Cost-plus financing. Total obligation is locked at creation (cost + margin)
+# and the installment schedule is generated upfront — no time-based interest.
+
+### Create a Murabahah financing -> capture {{financing_id}}
+# cost 20,000,000 + margin 5,000,000 - DP 1,000,000 = 24,000,000 financed over 12.
+# @name create_financing
+POST {{base_url}}/api/financings
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "asset_name": "iPhone 17 Pro",
+  "cost_price": 20000000,
+  "margin_amount": 5000000,
+  "down_payment": 1000000,
+  "tenor": 12
+}
+
+> {%
+client.test("financing created 201", function () {
+    client.assert(response.status === 201, "status " + response.status);
+    client.assert(response.body.data.id, "no financing id in body");
+});
+client.test("total price = cost + margin (locked)", function () {
+    client.assert(response.body.data.total_price === 25000000,
+        "total_price = " + response.body.data.total_price);
+});
+client.test("status DRAFT, akad MURABAHAH", function () {
+    client.assert(response.body.data.status === "DRAFT", "status " + response.body.data.status);
+    client.assert(response.body.data.akad_type === "MURABAHAH", "akad " + response.body.data.akad_type);
+});
+client.test("schedule has 12 installments, sums to financed amount", function () {
+    var inst = response.body.data.installments;
+    client.assert(Array.isArray(inst) && inst.length === 12, "installments length " + (inst ? inst.length : "none"));
+    client.assert(inst[0].installment_no === 1, "first installment_no " + inst[0].installment_no);
+    client.assert(inst[11].installment_no === 12, "last installment_no " + inst[11].installment_no);
+    var total = inst.reduce(function (s, i) { return s + i.amount; }, 0);
+    client.assert(total === 24000000, "amount sum " + total + " (expected cost+margin-dp = 24,000,000)");
+    var pokok = inst.reduce(function (s, i) { return s + i.principal_part; }, 0);
+    client.assert(pokok === 19000000, "principal sum " + pokok + " (expected cost-dp = 19,000,000)");
+    var margin = inst.reduce(function (s, i) { return s + i.margin_part; }, 0);
+    client.assert(margin === 5000000, "margin sum " + margin + " (expected 5,000,000)");
+});
+client.global.set("financing_id", response.body.data.id);
+%}
+
+### Get financing by id -> full schedule
+GET {{base_url}}/api/financings/{{financing_id}}
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("financing fetched 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+    client.assert(response.body.data.installments.length === 12, "no schedule preloaded");
+});
+%}
+
+### List financings (paginated)
+GET {{base_url}}/api/financings?page=1&limit=10
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("financings list 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+    client.assert(Array.isArray(response.body.data), "data is not an array");
+    client.assert(response.body.pagination, "no pagination block");
+});
+%}
+
+### Pay an installment BEFORE signing the akad -> 409 (financing not active)
+POST {{base_url}}/api/financings/{{financing_id}}/installments/1/pay
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("pay before sign blocked 409", function () {
+    client.assert(response.status === 409, "status " + response.status);
+});
+%}
+
+### Sign the akad -> DRAFT becomes ACTIVE, akad_signed_at stamped
+POST {{base_url}}/api/financings/{{financing_id}}/sign
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("akad signed -> ACTIVE", function () {
+    client.assert(response.status === 200, "status " + response.status);
+    client.assert(response.body.data.status === "ACTIVE", "status " + response.body.data.status);
+    client.assert(response.body.data.akad_signed_at, "akad_signed_at not set");
+});
+%}
+
+### Sign again -> 409 (only a DRAFT can be signed)
+POST {{base_url}}/api/financings/{{financing_id}}/sign
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("re-sign blocked 409", function () {
+    client.assert(response.status === 409, "status " + response.status);
+});
+%}
+
+### Pay installment #1 -> creates a QRIS, capture {{inst_order_ref}}  (needs Xendit test key)
+# @name pay_installment
+POST {{base_url}}/api/financings/{{financing_id}}/installments/1/pay
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("installment QRIS created 201", function () {
+    client.assert(response.status === 201, "status " + response.status + " (needs Xendit test key)");
+    client.assert(response.body.data.order_ref, "no order_ref in body");
+    client.assert(response.body.data.amount === 2000000, "amount " + response.body.data.amount);
+});
+if (response.body.data && response.body.data.order_ref) {
+    client.global.set("inst_order_ref", response.body.data.order_ref);
+}
+%}
+
+### Webhook: payment.succeeded for the installment -> settles installment #1
+POST {{base_url}}/webhooks/xendit
+Content-Type: application/json
+x-callback-token: {{callback_token}}
+
+{
+  "event": "payment.succeeded",
+  "data": { "id": "pr-inst-001", "reference_id": "{{inst_order_ref}}", "status": "SUCCEEDED" }
+}
+
+> {%
+client.test("installment webhook acked 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+});
+%}
+
+### Get financing -> installment #1 PAID; financing still ACTIVE (11 of 12 unpaid)
+# Paying ALL 12 installments would auto-transition the financing to SETTLED.
+GET {{base_url}}/api/financings/{{financing_id}}
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("installment 1 settled, financing still active", function () {
+    client.assert(response.status === 200, "status " + response.status);
+    client.assert(response.body.data.status === "ACTIVE", "financing status " + response.body.data.status);
+    var first = response.body.data.installments[0];
+    client.assert(first.status === "PAID", "installment 1 status " + first.status);
+    client.assert(first.paid_at, "installment 1 paid_at not set");
+});
+%}
+
+### Pay the already-paid installment #1 again -> 409
+POST {{base_url}}/api/financings/{{financing_id}}/installments/1/pay
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("pay paid installment 409", function () {
+    client.assert(response.status === 409, "status " + response.status);
+});
+%}
+
+### Validation: zero tenor -> 422
+POST {{base_url}}/api/financings
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{ "asset_name": "Bad", "cost_price": 1000000, "margin_amount": 0, "tenor": 0 }
+
+> {%
+client.test("zero tenor 422", function () {
+    client.assert(response.status === 422, "status " + response.status);
+});
+%}
+
+### Business rule: down payment >= total price -> 400 (schedule generator rejects)
+POST {{base_url}}/api/financings
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{ "asset_name": "Overpaid DP", "cost_price": 1000, "margin_amount": 0, "down_payment": 5000, "tenor": 3 }
+
+> {%
+client.test("down payment too high 400", function () {
+    client.assert(response.status === 400, "status " + response.status);
+});
+%}
+
+### Non-numeric id -> 400
+GET {{base_url}}/api/financings/not-a-number
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("bad financing id 400", function () {
+    client.assert(response.status === 400, "status " + response.status);
+});
+%}
+
+### Unknown id -> 404 (also the owner-scoping path: other users' rows read as not-found)
+GET {{base_url}}/api/financings/999999999
+Authorization: Bearer {{access_token}}
+
+> {%
+client.test("unknown financing 404", function () {
+    client.assert(response.status === 404, "status " + response.status);
+});
+%}
+
+
+############################  5. USERS  ######################################
 
 ### List users (paginated)
 GET {{base_url}}/api/users?page=1&limit=10
@@ -271,7 +477,7 @@ client.test("user deleted 200", function () {
 %}
 
 
-############################  5. LOGOUT  #####################################
+############################  6. LOGOUT  #####################################
 
 ### Logout invalidates refresh token (already-deleted user — token still in redis)
 # Use a fresh login first? No — current refresh_token is still valid until
@@ -291,7 +497,7 @@ client.test("logout handled", function () {
 %}
 
 
-############################  6. NEGATIVE & AUTH  ############################
+############################  7. NEGATIVE & AUTH  ############################
 
 ### No token -> 401 on protected route
 GET {{base_url}}/api/me/

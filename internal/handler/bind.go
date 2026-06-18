@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -25,4 +26,12 @@ func bindJSON[T any](c *gin.Context, req *T) bool {
 
 func parseUUID(c *gin.Context) (uuid.UUID, error) {
 	return uuid.Parse(c.Param("id"))
+}
+
+func parseUintParam(c *gin.Context, name string) (uint, error) {
+	v, err := strconv.ParseUint(c.Param(name), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return uint(v), nil
 }

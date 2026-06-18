@@ -13,9 +13,10 @@ import (
 )
 
 type Handlers struct {
-	Auth    *handler.AuthHandler
-	Payment *handler.PaymentHandler
-	User    *handler.UserHandler
+	Auth      *handler.AuthHandler
+	Payment   *handler.PaymentHandler
+	User      *handler.UserHandler
+	Financing *handler.FinancingHandler
 }
 
 func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, limiter *redis_rate.Limiter, cfg config.Config) {
@@ -48,6 +49,15 @@ func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, limiter 
 		{
 			payments.POST("/qris", h.Payment.CreateQRIS)
 			payments.GET("/:order_ref", h.Payment.GetStatus)
+		}
+
+		financings := api.Group("/financings")
+		{
+			financings.POST("", h.Financing.Create)
+			financings.GET("", h.Financing.List)
+			financings.GET("/:id", h.Financing.GetByID)
+			financings.POST("/:id/sign", h.Financing.Sign)
+			financings.POST("/:id/installments/:no/pay", h.Financing.PayInstallment)
 		}
 
 		users := api.Group("/users")
