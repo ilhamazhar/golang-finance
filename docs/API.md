@@ -19,6 +19,8 @@ authentication with email verification, QRIS payments via Xendit, and Murabahah
   - [Authentication](#authentication)
   - [Rate limiting](#rate-limiting)
   - [Errors & validation](#errors--validation)
+- [Health](#health)
+  - [`GET /health`](#get-health)
 - [Auth endpoints](#auth-endpoints)
   - [`POST /auth/register`](#post-authregister)
   - [`POST /auth/login`](#post-authlogin)
@@ -172,6 +174,29 @@ Validation failures (`422`) include a per-field `errors` array:
     { "field": "email", "message": "email must be a valid email" },
     { "field": "password", "message": "password must be at least 6 characters" }
   ]
+}
+```
+
+---
+
+## Health
+
+### GET /health
+
+Liveness probe. **Public** — no authentication, no rate limiting. Intended for
+load balancers and uptime monitors.
+
+```bash
+curl http://localhost:8080/health
+```
+
+**`200 OK`:**
+
+```json
+{
+  "success": true,
+  "message": "ok",
+  "data": { "status": "healthy" }
 }
 ```
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -10,6 +11,7 @@ import (
 	"github.com/ilhamazhar/golang-gpt/internal/handler"
 	"github.com/ilhamazhar/golang-gpt/internal/middleware"
 	"github.com/ilhamazhar/golang-gpt/pkg/jwt"
+	"github.com/ilhamazhar/golang-gpt/pkg/response"
 )
 
 type Handlers struct {
@@ -20,6 +22,10 @@ type Handlers struct {
 }
 
 func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, limiter *redis_rate.Limiter, cfg config.Config) {
+	r.GET("/health", func(c *gin.Context) {
+		response.OK(c, http.StatusOK, "ok", gin.H{"status": "healthy"})
+	})
+
 	r.POST("/webhooks/xendit", h.Payment.Webhook)
 
 	// Auth routes: strict IP-based limits to prevent brute force

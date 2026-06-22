@@ -13,6 +13,19 @@
 ###############################################################################
 
 
+############################  0. HEALTH  ######################################
+
+### Health check (public, no auth, not rate-limited)
+GET {{base_url}}/health
+
+> {%
+client.test("health 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+    client.assert(response.body.data.status === "healthy", "got " + response.body.data.status);
+});
+%}
+
+
 ############################  1. AUTH  ########################################
 
 ### Register a fresh user
