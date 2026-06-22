@@ -119,6 +119,87 @@ client.global.set("access_token", response.body.data.access_token);
 client.global.set("refresh_token", response.body.data.refresh_token);
 %}
 
+### Forgot password -> emails a reset link, captures {{reset_token}} (dev only)
+POST {{base_url}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{registered_email}}"
+}
+
+> {%
+client.test("forgot password 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+    client.assert(response.body.data.reset_token, "no reset_token (dev mode only)");
+});
+client.global.set("reset_token", response.body.data.reset_token);
+%}
+
+### Forgot password for unknown email -> still 200 (no account enumeration)
+POST {{base_url}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "nobody-{{$timestamp}}@azhar.test"
+}
+
+> {%
+client.test("forgot password unknown email 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+});
+%}
+
+### Reset password with the token -> set it back to {{test_password}}
+# Reset to the original password so the rest of this scenario (which still logs
+# in with {{test_password}}) keeps working.
+POST {{base_url}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{reset_token}}",
+  "new_password": "{{test_password}}",
+  "confirm_password": "{{test_password}}"
+}
+
+> {%
+client.test("reset password 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+});
+%}
+
+### Reuse the reset token -> 400 (one-time use)
+POST {{base_url}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{reset_token}}",
+  "new_password": "{{test_password}}",
+  "confirm_password": "{{test_password}}"
+}
+
+> {%
+client.test("reset token one-time use 400", function () {
+    client.assert(response.status === 400, "status " + response.status);
+});
+%}
+
+### Log in with the password set via reset -> rotate tokens
+POST {{base_url}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{registered_email}}",
+  "password": "{{test_password}}"
+}
+
+> {%
+client.test("login after reset 200", function () {
+    client.assert(response.status === 200, "status " + response.status);
+});
+client.global.set("access_token", response.body.data.access_token);
+client.global.set("refresh_token", response.body.data.refresh_token);
+%}
+
 
 ############################  2. ME  ##########################################
 

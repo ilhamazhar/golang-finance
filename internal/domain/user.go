@@ -17,6 +17,11 @@ type TokenStore interface {
 	SaveVerification(ctx context.Context, token, userID string, ttl time.Duration) error
 	GetVerification(ctx context.Context, token string) (string, error)
 	RevokeVerification(ctx context.Context, token string) error
+
+	// Password reset tokens (stored under a separate namespace).
+	SaveReset(ctx context.Context, token, userID string, ttl time.Duration) error
+	GetReset(ctx context.Context, token string) (string, error)
+	RevokeReset(ctx context.Context, token string) error
 }
 
 // Mailer sends transactional email.
@@ -61,6 +66,16 @@ type LogoutRequest struct {
 
 type ResendVerificationRequest struct {
 	Email string `json:"email" validate:"required,email"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Token           string `json:"token" validate:"required"`
+	NewPassword     string `json:"new_password" validate:"required,min=6"`
+	ConfirmPassword string `json:"confirm_password" validate:"required,eqfield=NewPassword"`
 }
 
 type UpdateUserRequest struct {
@@ -135,6 +150,8 @@ type AuthService interface {
 	Login(ctx context.Context, req LoginRequest) (*TokenResponse, error)
 	VerifyEmail(ctx context.Context, token string) error
 	ResendVerification(ctx context.Context, email string) (string, error)
+	ForgotPassword(ctx context.Context, email string) (string, error)
+	ResetPassword(ctx context.Context, req ResetPasswordRequest) error
 	RefreshToken(ctx context.Context, refreshToken string) (*TokenResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetProfile(ctx context.Context, id uuid.UUID) (UserResponse, error)

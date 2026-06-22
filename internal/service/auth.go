@@ -23,8 +23,10 @@ type authService struct {
 	refresh       *jwt.Manager
 	refreshExpiry time.Duration
 	verifyExpiry  time.Duration
+	resetExpiry   time.Duration
 	appBaseURL    string
-	exposeToken   bool // when true, verification tokens are returned via the API (dev only)
+	frontendURL   string // SPA base URL; password-reset link points here
+	exposeToken   bool   // when true, verification/reset tokens are returned via the API (dev only)
 }
 
 func NewAuthService(
@@ -32,8 +34,8 @@ func NewAuthService(
 	store domain.TokenStore,
 	mailer domain.Mailer,
 	access, refresh *jwt.Manager,
-	refreshExpiry, verifyExpiry time.Duration,
-	appBaseURL string,
+	refreshExpiry, verifyExpiry, resetExpiry time.Duration,
+	appBaseURL, frontendURL string,
 	exposeToken bool,
 ) domain.AuthService {
 	return &authService{
@@ -44,7 +46,9 @@ func NewAuthService(
 		refresh:       refresh,
 		refreshExpiry: refreshExpiry,
 		verifyExpiry:  verifyExpiry,
+		resetExpiry:   resetExpiry,
 		appBaseURL:    appBaseURL,
+		frontendURL:   frontendURL,
 		exposeToken:   exposeToken,
 	}
 }
@@ -205,6 +209,89 @@ func (s *authService) ResendVerification(ctx context.Context, email string) (str
 		return token, nil
 	}
 	return "", nil
+}
+
+// ForgotPassword issues a one-time password-reset token and emails a reset link.
+// To avoid leaking which emails are registered, it returns no error when the
+// email is unknown.
+func (s *authService) ForgotPassword(ctx context.Context, email string) (string, error) {
+	user, err := s.users.FindByEmail(ctx, email)
+	if err != nil {
+		// Don't reveal whether the email exists.
+		return "", nil
+	}
+
+	token, err := s.issueReset(ctx, user)
+	if err != nil {
+		return "", err
+	}
+	if s.exposeToken {
+		return token, nil
+	}
+	return "", nil
+}
+
+// issueReset creates a one-time reset token, stores it, and sends the reset link
+// (pointing at the frontend page that collects the new password).
+func (s *authService) issueReset(ctx context.Context, user *domain.User) (string, error) {
+	token, err := randomToken()
+	if err != nil {
+		return "", err
+	}
+	if err := s.store.SaveReset(ctx, token, user.ID.String(), s.resetExpiry); err != nil {
+		return "", fmt.Errorf("store reset token: %w", err)
+	}
+
+	link := fmt.Sprintf("%s/reset-password?token=%s", s.frontendURL, token)
+	subject := "Reset your password"
+	body := fmt.Sprintf(
+		`<p>Hi %s,</p>`+
+			`<p>We received a request to reset your password. Click the link below to choose a new one:</p>`+
+			`<p><a href="%s">Reset my password</a></p>`+
+			`<p>Or paste this URL into your browser:<br>%s</p>`+
+			`<p>This link expires in %.0f hour(s). If you didn't request this, you can safely ignore this email.</p>`,
+		html.EscapeString(user.Name), link, link, s.resetExpiry.Hours(),
+	)
+
+	if err := s.mailer.Send(ctx, user.Email, subject, body); err != nil {
+		return "", fmt.Errorf("send reset email: %w", err)
+	}
+	return token, nil
+}
+
+// ResetPassword consumes a reset token, sets the new password, and revokes the
+// token plus any active refresh sessions so old sessions can't outlive the reset.
+func (s *authService) ResetPassword(ctx context.Context, req domain.ResetPasswordRequest) error {
+	userID, err := s.store.GetReset(ctx, req.Token)
+	if err != nil {
+		return errors.New("invalid or expired reset token")
+	}
+
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return errors.New("invalid reset token")
+	}
+
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	hash, err := password.Hash(req.NewPassword, password.DefaultParams)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	user.PasswordHash = hash
+	if err := s.users.Update(ctx, user); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
+	// One-time use: drop the token whether or not the update succeeded above.
+	if err := s.store.RevokeReset(ctx, req.Token); err != nil {
+		return fmt.Errorf("revoke reset token: %w", err)
+	}
+	return nil
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*domain.TokenResponse, error) {

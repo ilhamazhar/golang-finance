@@ -86,6 +86,39 @@ func (h *AuthHandler) ResendVerification(c *gin.Context) {
 	response.OK(c, http.StatusOK, "If the email exists and is unverified, a verification link has been sent", data)
 }
 
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req domain.ForgotPasswordRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	token, err := h.auth.ForgotPassword(c.Request.Context(), req.Email)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
+	var data any
+	if token != "" {
+		data = gin.H{"reset_token": token}
+	}
+	response.OK(c, http.StatusOK, "If the email exists, a password reset link has been sent", data)
+}
+
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req domain.ResetPasswordRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	if err := h.auth.ResetPassword(c.Request.Context(), req); err != nil {
+		response.Fail(c, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	response.OK(c, http.StatusOK, "Password reset successfully", nil)
+}
+
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req domain.RefreshRequest
 	if !bindJSON(c, &req) {

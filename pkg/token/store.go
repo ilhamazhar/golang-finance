@@ -53,6 +53,18 @@ func (s *Store) RevokeVerification(ctx context.Context, token string) error {
 	return s.client.Del(ctx, verifyKey(token)).Err()
 }
 
+func (s *Store) SaveReset(ctx context.Context, token, userID string, ttl time.Duration) error {
+	return s.client.Set(ctx, resetKey(token), userID, ttl).Err()
+}
+
+func (s *Store) GetReset(ctx context.Context, token string) (string, error) {
+	return s.client.Get(ctx, resetKey(token)).Result()
+}
+
+func (s *Store) RevokeReset(ctx context.Context, token string) error {
+	return s.client.Del(ctx, resetKey(token)).Err()
+}
+
 func hashKey(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return fmt.Sprintf("refresh:%x", h)
@@ -61,4 +73,9 @@ func hashKey(token string) string {
 func verifyKey(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return fmt.Sprintf("verify:%x", h)
+}
+
+func resetKey(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("reset:%x", h)
 }

@@ -26,6 +26,8 @@ authentication with email verification, QRIS payments via Xendit, and Murabahah
   - [`POST /auth/login`](#post-authlogin)
   - [`GET /auth/verify`](#get-authverify)
   - [`POST /auth/resend-verification`](#post-authresend-verification)
+  - [`POST /auth/forgot-password`](#post-authforgot-password)
+  - [`POST /auth/reset-password`](#post-authreset-password)
   - [`POST /auth/refresh`](#post-authrefresh)
   - [`POST /auth/logout`](#post-authlogout)
 - [Current user (`/api/me`)](#current-user-apime)
@@ -354,6 +356,73 @@ curl -X POST http://localhost:8080/auth/resend-verification \
 ```
 
 > `data.verification_token` appears only in non-production environments.
+
+### POST /auth/forgot-password
+
+Request a password reset. Sends an email containing a link to the frontend reset
+page (`<FRONTEND_URL>/reset-password?token=...`). Always returns `200` regardless
+of whether the email exists, to avoid leaking account existence.
+
+**Request:**
+
+```json
+{ "email": "ilham@example.com" }
+```
+
+```bash
+curl -X POST http://localhost:8080/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "ilham@example.com" }'
+```
+
+**`200 OK`:**
+
+```json
+{
+  "success": true,
+  "message": "If the email exists, a password reset link has been sent",
+  "data": { "reset_token": "abc123" }
+}
+```
+
+> `data.reset_token` appears only in non-production environments, so the reset
+> flow can be exercised without a real email provider. The token is single-use and
+> expires after `PASSWORD_RESET_EXPIRY_HOURS` (default 1 hour).
+
+### POST /auth/reset-password
+
+Consume a reset token and set a new password. The token is invalidated on
+success (one-time use).
+
+**Request:**
+
+```json
+{
+  "token": "abc123",
+  "new_password": "newsecret456",
+  "confirm_password": "newsecret456"
+}
+```
+
+| Field              | Rules                                  |
+|--------------------|----------------------------------------|
+| `token`            | required (from the reset email)        |
+| `new_password`     | required, ≥ 6 chars                    |
+| `confirm_password` | required, must equal `new_password`    |
+
+```bash
+curl -X POST http://localhost:8080/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "abc123",
+    "new_password": "newsecret456",
+    "confirm_password": "newsecret456"
+  }'
+```
+
+**`200 OK`:** `{ "success": true, "message": "Password reset successfully" }`
+
+**Errors:** `400` (invalid, expired, or already-used token), `422` (validation).
 
 ### POST /auth/refresh
 
@@ -858,6 +927,7 @@ Relevant to the API surface:
 | `JWT_EXPIRY_HOURS`        | `24`                     | Access token lifetime                    |
 | `JWT_REFRESH_EXPIRY_HOURS`| `168`                    | Refresh token lifetime (7 days)          |
 | `EMAIL_VERIFY_EXPIRY_HOURS`| `24`                    | Verification token lifetime              |
+| `PASSWORD_RESET_EXPIRY_HOURS`| `1`                  | Password-reset token lifetime            |
 | `RATE_LIMIT_AUTH_MAX`     | `10`                     | Max `/auth/*` requests per period (IP)   |
 | `RATE_LIMIT_AUTH_PERIOD`  | `minute`                 | `second` \| `minute` \| `hour` \| `day`  |
 | `RATE_LIMIT_API_MAX`      | `100`                    | Max `/api/*` requests per period (user)  |

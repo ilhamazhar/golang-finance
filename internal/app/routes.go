@@ -36,6 +36,8 @@ func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, limiter 
 		auth.POST("/login", h.Auth.Login)
 		auth.GET("/verify", h.Auth.VerifyEmail)
 		auth.POST("/resend-verification", h.Auth.ResendVerification)
+		auth.POST("/forgot-password", h.Auth.ForgotPassword)
+		auth.POST("/reset-password", h.Auth.ResetPassword)
 		auth.POST("/refresh", h.Auth.Refresh)
 		auth.POST("/logout", h.Auth.Logout)
 	}

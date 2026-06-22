@@ -67,7 +67,7 @@ func New(cfg config.Config) (*App, error) {
 	financingRepo := repository.NewFinancingRepository(db)
 
 	// --- Services ---
-	authService := service.NewAuthService(userRepo, store, mail, jwtManager, refreshManager, cfg.JWTRefreshExpiry, cfg.EmailVerifyExpiry, cfg.AppBaseURL, cfg.AppEnv != "production")
+	authService := service.NewAuthService(userRepo, store, mail, jwtManager, refreshManager, cfg.JWTRefreshExpiry, cfg.EmailVerifyExpiry, cfg.PasswordResetExpiry, cfg.AppBaseURL, cfg.FrontendURL, cfg.AppEnv != "production")
 	paymentService := service.NewPaymentService(paymentRepo, xenditClient, financingRepo)
 	userService := service.NewUserService(userRepo)
 	financingService := service.NewFinancingService(financingRepo, paymentService)

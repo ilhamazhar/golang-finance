@@ -20,6 +20,7 @@ type Config struct {
 	JWTExpiry           time.Duration
 	JWTRefreshExpiry    time.Duration
 	EmailVerifyExpiry   time.Duration // how long an email-verification token is valid
+	PasswordResetExpiry time.Duration // how long a password-reset token is valid
 	SMTPHost            string        // if empty, emails are logged instead of sent
 	SMTPPort            string
 	SMTPUsername        string
@@ -46,6 +47,10 @@ func Load() (Config, error) {
 	emailVerifyExpiry, err := strconv.ParseFloat(getEnv("EMAIL_VERIFY_EXPIRY_HOURS", "24"), 64)
 	if err != nil {
 		return Config{}, errors.New("invalid EMAIL_VERIFY_EXPIRY_HOURS")
+	}
+	passwordResetExpiry, err := strconv.ParseFloat(getEnv("PASSWORD_RESET_EXPIRY_HOURS", "1"), 64)
+	if err != nil {
+		return Config{}, errors.New("invalid PASSWORD_RESET_EXPIRY_HOURS")
 	}
 
 	rateLimitAuth, err := strconv.Atoi(getEnv("RATE_LIMIT_AUTH_MAX", "10"))
@@ -77,6 +82,7 @@ func Load() (Config, error) {
 		JWTExpiry:           time.Duration(jwtExpiry * float64(time.Hour)),
 		JWTRefreshExpiry:    time.Duration(jwtRefreshExpiry * float64(time.Hour)),
 		EmailVerifyExpiry:   time.Duration(emailVerifyExpiry * float64(time.Hour)),
+		PasswordResetExpiry: time.Duration(passwordResetExpiry * float64(time.Hour)),
 		SMTPHost:            os.Getenv("SMTP_HOST"),
 		SMTPPort:            getEnv("SMTP_PORT", "587"),
 		SMTPUsername:        os.Getenv("SMTP_USERNAME"),
