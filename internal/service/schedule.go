@@ -13,7 +13,7 @@ var (
 	ErrInvalidCostPrice    = errors.New("cost price must be greater than zero")
 	ErrNegativeMargin      = errors.New("margin amount must not be negative")
 	ErrNegativeDownPayment = errors.New("down payment must not be negative")
-	ErrDownPaymentTooHigh  = errors.New("down payment must be less than total price")
+	ErrDownPaymentTooHigh  = errors.New("down payment must be less than cost price")
 )
 
 // ScheduleParams holds the inputs for a Murabahah installment schedule. All
@@ -54,7 +54,10 @@ func GenerateMurabahahSchedule(p ScheduleParams) ([]domain.Installment, error) {
 		return nil, ErrNegativeMargin
 	case p.DownPayment < 0:
 		return nil, ErrNegativeDownPayment
-	case p.DownPayment >= p.CostPrice+p.MarginAmount:
+	// The down payment is applied against the principal (pokok), so it can never
+	// exceed the cost price — otherwise the financed principal (and the per-line
+	// principal_part) would go negative.
+	case p.DownPayment >= p.CostPrice:
 		return nil, ErrDownPaymentTooHigh
 	}
 

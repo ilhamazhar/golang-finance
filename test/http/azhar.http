@@ -483,12 +483,15 @@ client.test("zero tenor 422", function () {
 });
 %}
 
-### Business rule: down payment >= total price -> 400 (schedule generator rejects)
+### Business rule: down payment >= cost price -> 400 (schedule generator rejects)
+# DP (2000) is below the total price (6000) but above the cost/principal (1000).
+# It must be rejected: the DP reduces principal, so it can't exceed cost_price
+# (otherwise principal_part would go negative).
 POST {{base_url}}/api/financings
 Content-Type: application/json
 Authorization: Bearer {{access_token}}
 
-{ "asset_name": "Overpaid DP", "cost_price": 1000, "margin_amount": 0, "down_payment": 5000, "tenor": 3 }
+{ "asset_name": "Overpaid DP", "cost_price": 1000, "margin_amount": 5000, "down_payment": 2000, "tenor": 3 }
 
 > {%
 client.test("down payment too high 400", function () {

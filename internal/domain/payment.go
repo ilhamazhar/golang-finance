@@ -74,6 +74,6 @@ type PaymentService interface {
 	CreateQRIS(ctx context.Context, userID uuid.UUID, req CreateQRISRequest) (*QRISResponse, error)
 	// CreateForInstallment creates a QRIS payment bound to a financing installment.
 	CreateForInstallment(ctx context.Context, userID uuid.UUID, installmentID uint, amount int64, description string) (*QRISResponse, error)
-	GetStatus(ctx context.Context, orderRef string) (*PaymentStatusResponse, error)
+	GetStatus(ctx context.Context, userID uuid.UUID, orderRef string) (*PaymentStatusResponse, error)
 	HandleWebhook(ctx context.Context, callbackToken string, body []byte) error
 }

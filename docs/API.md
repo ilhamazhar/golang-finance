@@ -657,7 +657,7 @@ generated upfront.
 | `asset_name`     | required, ≤ 255 chars                             |
 | `cost_price`     | required, `> 0`                                  |
 | `margin_amount`  | `>= 0`                                            |
-| `down_payment`   | `>= 0`                                            |
+| `down_payment`   | `>= 0` and `< cost_price` (it reduces principal)  |
 | `tenor`          | required, `1`–`360` (monthly installments)       |
 | `first_due_date` | optional; defaults to ~one month out when omitted |
 

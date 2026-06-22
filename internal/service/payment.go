@@ -79,9 +79,11 @@ func (s *paymentService) createQRIS(ctx context.Context, payment *domain.Payment
 	}, nil
 }
 
-func (s *paymentService) GetStatus(ctx context.Context, orderRef string) (*domain.PaymentStatusResponse, error) {
+func (s *paymentService) GetStatus(ctx context.Context, userID uuid.UUID, orderRef string) (*domain.PaymentStatusResponse, error) {
 	payment, err := s.repo.FindByOrderRef(ctx, orderRef)
-	if err != nil {
+	// Treat "belongs to another user" the same as "not found" so existence of
+	// other users' payments is not revealed.
+	if err != nil || payment.UserID != userID {
 		return nil, errors.New("failed to find payment")
 	}
 

@@ -42,8 +42,14 @@ func (h *PaymentHandler) CreateQRIS(c *gin.Context) {
 }
 
 func (h *PaymentHandler) GetStatus(c *gin.Context) {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized", nil)
+		return
+	}
+
 	orderRef := c.Param("order_ref")
-	result, err := h.svc.GetStatus(c.Request.Context(), orderRef)
+	result, err := h.svc.GetStatus(c.Request.Context(), claims.UserID, orderRef)
 	if err != nil {
 		response.Fail(c, http.StatusNotFound, err.Error(), nil)
 		return

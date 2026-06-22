@@ -153,6 +153,9 @@ func TestGenerateMurabahahSchedule_Validation(t *testing.T) {
 		{"negative margin", func(p ScheduleParams) ScheduleParams { p.MarginAmount = -1; return p }, ErrNegativeMargin},
 		{"negative dp", func(p ScheduleParams) ScheduleParams { p.DownPayment = -1; return p }, ErrNegativeDownPayment},
 		{"dp too high", func(p ScheduleParams) ScheduleParams { p.DownPayment = 5000; return p }, ErrDownPaymentTooHigh},
+		// DP between cost (1000) and total (1100) would yield negative principal; reject it.
+		{"dp exceeds cost", func(p ScheduleParams) ScheduleParams { p.DownPayment = 1050; return p }, ErrDownPaymentTooHigh},
+		{"dp equals cost", func(p ScheduleParams) ScheduleParams { p.DownPayment = 1000; return p }, ErrDownPaymentTooHigh},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
