@@ -49,7 +49,7 @@ func (h *PaymentHandler) GetStatus(c *gin.Context) {
 	}
 
 	orderRef := c.Param("order_ref")
-	result, err := h.svc.GetStatus(c.Request.Context(), claims.UserID, orderRef)
+	result, err := h.svc.GetStatus(c.Request.Context(), claims.UserID, orderRef, canViewAll(claims))
 	if err != nil {
 		response.Fail(c, http.StatusNotFound, err.Error(), nil)
 		return

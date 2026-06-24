@@ -56,6 +56,21 @@ func (s *userService) Update(ctx context.Context, id uuid.UUID, req domain.Updat
 	return domain.ToUserResponse(user), nil
 }
 
+// UpdateRole sets a user's authorization role. The change takes effect on the
+// user's next issued token (login/refresh), since the role is carried in the JWT.
+func (s *userService) UpdateRole(ctx context.Context, id uuid.UUID, role domain.Role) (domain.UserResponse, error) {
+	user, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return domain.UserResponse{}, errors.New("user not found")
+	}
+
+	user.Role = role
+	if err := s.repo.Update(ctx, user); err != nil {
+		return domain.UserResponse{}, fmt.Errorf("failed to update role: %w", err)
+	}
+	return domain.ToUserResponse(user), nil
+}
+
 func (s *userService) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {

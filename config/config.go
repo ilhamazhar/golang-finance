@@ -33,6 +33,7 @@ type Config struct {
 	RateLimitAPI        int           // max requests per period for /api/* (user-based)
 	RateLimitAPIPeriod  time.Duration // time window for api rate limit
 	CORSAllowedOrigins  []string      // comma-separated list, e.g. https://app.com,https://admin.com
+	AdminEmail          string        // if set, this user is promoted to admin on startup (bootstrap)
 }
 
 func Load() (Config, error) {
@@ -95,6 +96,7 @@ func Load() (Config, error) {
 		RateLimitAPI:        rateLimitAPI,
 		RateLimitAPIPeriod:  rateLimitAPIPeriod,
 		CORSAllowedOrigins:  strings.Split(getEnv("CORS_ALLOWED_ORIGINS", "*"), ","),
+		AdminEmail:          os.Getenv("ADMIN_EMAIL"),
 	}
 
 	if cfg.DatabaseURL == "" {

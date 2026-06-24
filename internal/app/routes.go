@@ -4,12 +4,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/casbin/casbin/v2"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/ilhamazhar/golang-gpt/config"
 	"github.com/ilhamazhar/golang-gpt/internal/handler"
 	"github.com/ilhamazhar/golang-gpt/internal/middleware"
+	"github.com/ilhamazhar/golang-gpt/pkg/authz"
 	"github.com/ilhamazhar/golang-gpt/pkg/jwt"
 	"github.com/ilhamazhar/golang-gpt/pkg/response"
 )
@@ -21,7 +23,7 @@ type Handlers struct {
 	Financing *handler.FinancingHandler
 }
 
-func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, limiter *redis_rate.Limiter, cfg config.Config) {
+func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, enforcer *casbin.Enforcer, limiter *redis_rate.Limiter, cfg config.Config) {
 	r.GET("/health", func(c *gin.Context) {
 		response.OK(c, http.StatusOK, "ok", gin.H{"status": "healthy"})
 	})
@@ -49,31 +51,35 @@ func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, limiter 
 	{
 		me := api.Group("/me")
 		{
-			me.GET("/", h.Auth.Me)
-			me.PUT("/password", h.Auth.ChangePassword)
+			me.GET("/", middleware.Authorize(enforcer, authz.ResourceProfile, authz.ActionRead), h.Auth.Me)
+			me.PUT("/password", middleware.Authorize(enforcer, authz.ResourceProfile, authz.ActionUpdate), h.Auth.ChangePassword)
 		}
 
 		payments := api.Group("/payments")
 		{
-			payments.POST("/qris", h.Payment.CreateQRIS)
-			payments.GET("/:order_ref", h.Payment.GetStatus)
+			payments.POST("/qris", middleware.Authorize(enforcer, authz.ResourcePayments, authz.ActionCreate), h.Payment.CreateQRIS)
+			payments.GET("/:order_ref", middleware.Authorize(enforcer, authz.ResourcePayments, authz.ActionRead), h.Payment.GetStatus)
 		}
 
 		financings := api.Group("/financings")
 		{
-			financings.POST("", h.Financing.Create)
-			financings.GET("", h.Financing.List)
-			financings.GET("/:id", h.Financing.GetByID)
-			financings.POST("/:id/sign", h.Financing.Sign)
-			financings.POST("/:id/installments/:no/pay", h.Financing.PayInstallment)
+			financings.POST("", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionCreate), h.Financing.Create)
+			financings.GET("", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionRead), h.Financing.List)
+			financings.GET("/:id", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionRead), h.Financing.GetByID)
+			financings.POST("/:id/sign", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionSign), h.Financing.Sign)
+			financings.POST("/:id/installments/:no/pay", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionPay), h.Financing.PayInstallment)
 		}
 
+		// User administration: admin-only via Casbin (the user role has no
+		// "users" policy). Ownership is irrelevant here — these are cross-user
+		// admin operations.
 		users := api.Group("/users")
 		{
-			users.GET("", h.User.GetAll)
-			users.GET("/:id", h.User.GetByID)
-			users.PUT("/:id", h.User.Update)
-			users.DELETE("/:id", h.User.Delete)
+			users.GET("", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionRead), h.User.GetAll)
+			users.GET("/:id", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionRead), h.User.GetByID)
+			users.PUT("/:id", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionUpdate), h.User.Update)
+			users.PUT("/:id/role", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionUpdate), h.User.UpdateRole)
+			users.DELETE("/:id", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionDelete), h.User.Delete)
 		}
 	}
 }

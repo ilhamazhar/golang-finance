@@ -74,6 +74,8 @@ type PaymentService interface {
 	CreateQRIS(ctx context.Context, userID uuid.UUID, req CreateQRISRequest) (*QRISResponse, error)
 	// CreateForInstallment creates a QRIS payment bound to a financing installment.
 	CreateForInstallment(ctx context.Context, userID uuid.UUID, installmentID uint, amount int64, description string) (*QRISResponse, error)
-	GetStatus(ctx context.Context, userID uuid.UUID, orderRef string) (*PaymentStatusResponse, error)
+	// GetStatus returns a payment's status. When viewAll is true the ownership
+	// check is skipped, so privileged roles (admin/staff) may read any payment.
+	GetStatus(ctx context.Context, userID uuid.UUID, orderRef string, viewAll bool) (*PaymentStatusResponse, error)
 	HandleWebhook(ctx context.Context, callbackToken string, body []byte) error
 }

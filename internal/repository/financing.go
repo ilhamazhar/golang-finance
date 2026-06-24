@@ -27,6 +27,7 @@ func (r *financingRepo) Create(ctx context.Context, f *domain.Financing) error {
 func (r *financingRepo) FindByID(ctx context.Context, id uint) (*domain.Financing, error) {
 	var f domain.Financing
 	err := r.db.WithContext(ctx).
+		Preload("User", ownerColumns).
 		Preload("Installments", func(db *gorm.DB) *gorm.DB {
 			return db.Order("installment_no ASC")
 		}).
@@ -43,8 +44,34 @@ func (r *financingRepo) FindByUser(ctx context.Context, userID uuid.UUID, page, 
 		return nil, 0, err
 	}
 	// Listing is intentionally light: installments are loaded only on FindByID.
+	// The owner is preloaded (id/name/email only — never the password hash) so
+	// the response can show who the financing belongs to.
 	err := r.db.WithContext(ctx).
+		Preload("User", ownerColumns).
 		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Offset(offset).Limit(limit).
+		Find(&list).Error
+	return list, total, err
+}
+
+// ownerColumns restricts a preloaded User to safe, display-only columns.
+func ownerColumns(db *gorm.DB) *gorm.DB {
+	return db.Select("id", "name", "email")
+}
+
+// FindAll lists every financing across all users, for admin access. Like
+// FindByUser it omits installments; they are loaded only on FindByID.
+func (r *financingRepo) FindAll(ctx context.Context, page, limit int) ([]domain.Financing, int64, error) {
+	var list []domain.Financing
+	var total int64
+
+	offset := (page - 1) * limit
+	if err := r.db.WithContext(ctx).Model(&domain.Financing{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := r.db.WithContext(ctx).
+		Preload("User", ownerColumns).
 		Order("created_at DESC").
 		Offset(offset).Limit(limit).
 		Find(&list).Error

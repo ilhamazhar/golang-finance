@@ -52,7 +52,7 @@ func (h *FinancingHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	result, err := h.svc.GetByID(c.Request.Context(), claims.UserID, id)
+	result, err := h.svc.GetByID(c.Request.Context(), claims.UserID, id, canViewAll(claims))
 	if err != nil {
 		response.Fail(c, http.StatusNotFound, err.Error(), nil)
 		return
@@ -132,7 +132,7 @@ func (h *FinancingHandler) List(c *gin.Context) {
 
 	page, limit := parsePagination(c)
 
-	result, total, err := h.svc.ListByUser(c.Request.Context(), claims.UserID, page, limit)
+	result, total, err := h.svc.List(c.Request.Context(), claims.UserID, page, limit, canViewAll(claims))
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error(), nil)
 		return

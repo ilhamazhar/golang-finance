@@ -29,6 +29,24 @@ type Mailer interface {
 	Send(ctx context.Context, to, subject, body string) error
 }
 
+// Role is an authorization role. It is the subject Casbin enforces against; the
+// permission matrix (which role may do what) lives in Casbin policy, not here.
+type Role string
+
+const (
+	RoleUser  Role = "user"  // default role for self-registered accounts
+	RoleStaff Role = "staff" // back-office: read-only oversight, no master-data writes
+	RoleAdmin Role = "admin" // full access, inherits all user permissions
+)
+
+// CanViewAllResources reports whether a role may read other users' records
+// (financings, payments). Admin and staff have cross-user read access for
+// oversight; everyone else is scoped to their own rows. This governs the
+// service-layer ownership bypass, complementing the Casbin action check.
+func CanViewAllResources(role Role) bool {
+	return role == RoleAdmin || role == RoleStaff
+}
+
 // --- GORM Model ---
 
 type User struct {
@@ -36,6 +54,7 @@ type User struct {
 	Name            string         `json:"name" gorm:"not null"`
 	Email           string         `json:"email" gorm:"not null"`
 	PasswordHash    string         `json:"-" gorm:"not null"`
+	Role            Role           `json:"role" gorm:"type:varchar(20);not null;default:'user'"`
 	EmailVerifiedAt *time.Time     `json:"email_verified_at,omitempty"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -83,6 +102,10 @@ type UpdateUserRequest struct {
 	Email string `json:"email" validate:"omitempty,email"`
 }
 
+type UpdateRoleRequest struct {
+	Role Role `json:"role" validate:"required,oneof=user staff admin"`
+}
+
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" validate:"required"`
 	NewPassword     string `json:"new_password" validate:"required,min=6"`
@@ -95,6 +118,7 @@ type UserResponse struct {
 	ID              uuid.UUID  `json:"id"`
 	Name            string     `json:"name"`
 	Email           string     `json:"email"`
+	Role            Role       `json:"role"`
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
@@ -121,6 +145,7 @@ func ToUserResponse(u *User) UserResponse {
 		ID:              u.ID,
 		Name:            u.Name,
 		Email:           u.Email,
+		Role:            u.Role,
 		EmailVerifiedAt: u.EmailVerifiedAt,
 		CreatedAt:       u.CreatedAt,
 		UpdatedAt:       u.UpdatedAt,
@@ -142,6 +167,7 @@ type UserService interface {
 	FindAll(ctx context.Context, page, limit int) ([]UserResponse, int64, error)
 	FindByID(ctx context.Context, id uuid.UUID) (UserResponse, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateUserRequest) (UserResponse, error)
+	UpdateRole(ctx context.Context, id uuid.UUID, role Role) (UserResponse, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 

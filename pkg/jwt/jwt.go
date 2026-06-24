@@ -11,6 +11,7 @@ import (
 type Claims struct {
 	UserID    uuid.UUID `json:"user_id"`
 	Email     string    `json:"email"`
+	Role      string    `json:"role"`       // authorization role, e.g. "user" or "admin"
 	TokenType string    `json:"token_type"` // "access" or "refresh"
 	jwt.RegisteredClaims
 }
@@ -33,10 +34,11 @@ func (m *Manager) Expiry() time.Duration {
 	return m.expiry
 }
 
-func (m *Manager) Generate(userID uuid.UUID, email string) (string, error) {
+func (m *Manager) Generate(userID uuid.UUID, email, role string) (string, error) {
 	claims := Claims{
 		UserID:    userID,
 		Email:     email,
+		Role:      role,
 		TokenType: m.tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.expiry)),

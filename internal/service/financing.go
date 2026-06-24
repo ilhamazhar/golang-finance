@@ -59,23 +59,40 @@ func (s *financingService) CreateMurabahah(ctx context.Context, userID uuid.UUID
 		return nil, fmt.Errorf("failed to create financing: %w", err)
 	}
 
-	resp := domain.ToFinancingResponse(financing)
+	// Reload so the response carries the owner's name (FindByID preloads User),
+	// consistent with the get/list/sign responses.
+	created, err := s.repo.FindByID(ctx, financing.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload financing: %w", err)
+	}
+	resp := domain.ToFinancingResponse(created)
 	return &resp, nil
 }
 
-func (s *financingService) GetByID(ctx context.Context, userID uuid.UUID, id uint) (*domain.FinancingResponse, error) {
+func (s *financingService) GetByID(ctx context.Context, userID uuid.UUID, id uint, viewAll bool) (*domain.FinancingResponse, error) {
 	f, err := s.repo.FindByID(ctx, id)
 	// Treat "belongs to another user" the same as "not found" so existence
-	// of other users' financings is not revealed.
-	if err != nil || f.UserID != userID {
+	// of other users' financings is not revealed. Privileged roles (admin/staff)
+	// skip the ownership check and may read any financing.
+	if err != nil || (!viewAll && f.UserID != userID) {
 		return nil, errors.New("financing not found")
 	}
 	resp := domain.ToFinancingResponse(f)
 	return &resp, nil
 }
 
-func (s *financingService) ListByUser(ctx context.Context, userID uuid.UUID, page, limit int) ([]domain.FinancingResponse, int64, error) {
-	list, total, err := s.repo.FindByUser(ctx, userID, page, limit)
+func (s *financingService) List(ctx context.Context, userID uuid.UUID, page, limit int, viewAll bool) ([]domain.FinancingResponse, int64, error) {
+	// Privileged roles (admin/staff) list every financing; regular users see only their own.
+	var (
+		list  []domain.Financing
+		total int64
+		err   error
+	)
+	if viewAll {
+		list, total, err = s.repo.FindAll(ctx, page, limit)
+	} else {
+		list, total, err = s.repo.FindByUser(ctx, userID, page, limit)
+	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch financings: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ilhamazhar/golang-gpt/internal/domain"
+	"github.com/ilhamazhar/golang-gpt/internal/middleware"
 	"github.com/ilhamazhar/golang-gpt/pkg/response"
 )
 
@@ -64,6 +65,35 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	response.OK(c, http.StatusOK, "User updated", result)
+}
+
+// UpdateRole changes a user's role. Admin-only (gated on users:update via
+// Casbin). An admin cannot change their own role, to avoid accidental
+// self-lockout from the admin tier.
+func (h *UserHandler) UpdateRole(c *gin.Context) {
+	id, err := parseUUID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id", nil)
+		return
+	}
+
+	if claims := middleware.ClaimsFromContext(c); claims != nil && claims.UserID == id {
+		response.Fail(c, http.StatusBadRequest, "you cannot change your own role", nil)
+		return
+	}
+
+	var req domain.UpdateRoleRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.svc.UpdateRole(c.Request.Context(), id, req.Role)
+	if err != nil {
+		response.Fail(c, http.StatusNotFound, err.Error(), nil)
+		return
+	}
+
+	response.OK(c, http.StatusOK, "User role updated", result)
 }
 
 func (h *UserHandler) Delete(c *gin.Context) {

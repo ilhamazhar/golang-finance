@@ -11,6 +11,7 @@ import (
 	"github.com/ilhamazhar/golang-gpt/internal/handler"
 	"github.com/ilhamazhar/golang-gpt/internal/repository"
 	"github.com/ilhamazhar/golang-gpt/internal/service"
+	"github.com/ilhamazhar/golang-gpt/pkg/authz"
 	"github.com/ilhamazhar/golang-gpt/pkg/jwt"
 	"github.com/ilhamazhar/golang-gpt/pkg/mailer"
 	tokenstore "github.com/ilhamazhar/golang-gpt/pkg/token"
@@ -42,6 +43,20 @@ func New(cfg config.Config) (*App, error) {
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_active ON users (email) WHERE deleted_at IS NULL`).Error; err != nil {
 		return nil, fmt.Errorf("create email partial index: %w", err)
+	}
+
+	// --- Authorization (Casbin) ---
+	enforcer, err := authz.NewEnforcer(db)
+	if err != nil {
+		return nil, fmt.Errorf("authz: %w", err)
+	}
+
+	// Bootstrap: promote the configured account to admin. Idempotent and a
+	// no-op when ADMIN_EMAIL is unset or the user doesn't exist yet.
+	if cfg.AdminEmail != "" {
+		if err := db.Model(&domain.User{}).Where("email = ?", cfg.AdminEmail).Update("role", domain.RoleAdmin).Error; err != nil {
+			return nil, fmt.Errorf("bootstrap admin: %w", err)
+		}
 	}
 
 	// --- External clients ---
@@ -80,7 +95,7 @@ func New(cfg config.Config) (*App, error) {
 
 	r := gin.Default()
 	r.Use(corsMiddleware(cfg.CORSAllowedOrigins))
-	registerRoutes(r, Handlers{Auth: authHandler, Payment: paymentHandler, User: userHandler, Financing: financingHandler}, jwtManager, rateLimiter, cfg)
+	registerRoutes(r, Handlers{Auth: authHandler, Payment: paymentHandler, User: userHandler, Financing: financingHandler}, jwtManager, enforcer, rateLimiter, cfg)
 
 	return &App{cfg: cfg, router: r}, nil
 }

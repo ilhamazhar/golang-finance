@@ -63,6 +63,7 @@ func (s *authService) Register(ctx context.Context, req domain.RegisterRequest) 
 		Name:         req.Name,
 		Email:        req.Email,
 		PasswordHash: hash,
+		Role:         domain.RoleUser,
 	}
 
 	if err := s.users.Create(ctx, user); err != nil {
@@ -133,12 +134,12 @@ func (s *authService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 		return nil, domain.ErrEmailNotVerified
 	}
 
-	accessToken, err := s.access.Generate(user.ID, user.Email)
+	accessToken, err := s.access.Generate(user.ID, user.Email, string(user.Role))
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := s.refresh.Generate(user.ID, user.Email)
+	refreshToken, err := s.refresh.Generate(user.ID, user.Email, string(user.Role))
 	if err != nil {
 		return nil, err
 	}
@@ -318,12 +319,12 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, fmt.Errorf("revoke old token: %w", err)
 	}
 
-	newAccess, err := s.access.Generate(user.ID, user.Email)
+	newAccess, err := s.access.Generate(user.ID, user.Email, string(user.Role))
 	if err != nil {
 		return nil, err
 	}
 
-	newRefresh, err := s.refresh.Generate(user.ID, user.Email)
+	newRefresh, err := s.refresh.Generate(user.ID, user.Email, string(user.Role))
 	if err != nil {
 		return nil, err
 	}

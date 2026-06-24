@@ -107,6 +107,8 @@ type InstallmentResponse struct {
 
 type FinancingResponse struct {
 	ID           uint                  `json:"id"`
+	UserID       uuid.UUID             `json:"user_id"`
+	UserName     string                `json:"user_name,omitempty"` // populated when the owner is loaded (e.g. list endpoints)
 	AkadType     AkadType              `json:"akad_type"`
 	AssetName    string                `json:"asset_name"`
 	CostPrice    int64                 `json:"cost_price"`
@@ -136,6 +138,8 @@ func ToInstallmentResponse(i Installment) InstallmentResponse {
 func ToFinancingResponse(f *Financing) FinancingResponse {
 	resp := FinancingResponse{
 		ID:           f.ID,
+		UserID:       f.UserID,
+		UserName:     f.User.Name, // empty unless the User association was loaded
 		AkadType:     f.AkadType,
 		AssetName:    f.AssetName,
 		CostPrice:    f.CostPrice,
@@ -160,6 +164,7 @@ type FinancingRepository interface {
 	Create(ctx context.Context, f *Financing) error
 	FindByID(ctx context.Context, id uint) (*Financing, error)
 	FindByUser(ctx context.Context, userID uuid.UUID, page, limit int) ([]Financing, int64, error)
+	FindAll(ctx context.Context, page, limit int) ([]Financing, int64, error)
 	UpdateStatus(ctx context.Context, id uint, status FinancingStatus, signedAt *time.Time) error
 
 	// Installment access, used by the akad-signing and payment-settlement flows.
@@ -171,8 +176,11 @@ type FinancingRepository interface {
 
 type FinancingService interface {
 	CreateMurabahah(ctx context.Context, userID uuid.UUID, req CreateMurabahahRequest) (*FinancingResponse, error)
-	GetByID(ctx context.Context, userID uuid.UUID, id uint) (*FinancingResponse, error)
-	ListByUser(ctx context.Context, userID uuid.UUID, page, limit int) ([]FinancingResponse, int64, error)
+	// GetByID returns a financing. When viewAll is true the ownership check is
+	// skipped, so privileged roles (admin/staff) may read any user's financing.
+	GetByID(ctx context.Context, userID uuid.UUID, id uint, viewAll bool) (*FinancingResponse, error)
+	// List returns the caller's financings, or every financing when viewAll is true.
+	List(ctx context.Context, userID uuid.UUID, page, limit int, viewAll bool) ([]FinancingResponse, int64, error)
 	// SignAkad transitions a DRAFT financing to ACTIVE, stamping AkadSignedAt.
 	SignAkad(ctx context.Context, userID uuid.UUID, id uint) (*FinancingResponse, error)
 	// PayInstallment creates a QRIS payment for one installment of an ACTIVE financing.
