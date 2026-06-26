@@ -24,6 +24,12 @@ type Handlers struct {
 }
 
 func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, enforcer *casbin.Enforcer, limiter *redis_rate.Limiter, cfg config.Config) {
+	// can binds the enforcer so each route can declare just its (resource,
+	// action) guard instead of repeating middleware.Authorize(enforcer, ...).
+	can := func(obj, act string) gin.HandlerFunc {
+		return middleware.Authorize(enforcer, obj, act)
+	}
+
 	r.GET("/health", func(c *gin.Context) {
 		response.OK(c, http.StatusOK, "ok", gin.H{"status": "healthy"})
 	})
@@ -51,23 +57,23 @@ func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, enforcer
 	{
 		me := api.Group("/me")
 		{
-			me.GET("/", middleware.Authorize(enforcer, authz.ResourceProfile, authz.ActionRead), h.Auth.Me)
-			me.PUT("/password", middleware.Authorize(enforcer, authz.ResourceProfile, authz.ActionUpdate), h.Auth.ChangePassword)
+			me.GET("/", can(authz.ResourceProfile, authz.ActionRead), h.Auth.Me)
+			me.PUT("/password", can(authz.ResourceProfile, authz.ActionUpdate), h.Auth.ChangePassword)
 		}
 
 		payments := api.Group("/payments")
 		{
-			payments.POST("/qris", middleware.Authorize(enforcer, authz.ResourcePayments, authz.ActionCreate), h.Payment.CreateQRIS)
-			payments.GET("/:order_ref", middleware.Authorize(enforcer, authz.ResourcePayments, authz.ActionRead), h.Payment.GetStatus)
+			payments.POST("/qris", can(authz.ResourcePayments, authz.ActionCreate), h.Payment.CreateQRIS)
+			payments.GET("/:order_ref", can(authz.ResourcePayments, authz.ActionRead), h.Payment.GetStatus)
 		}
 
 		financings := api.Group("/financings")
 		{
-			financings.POST("", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionCreate), h.Financing.Create)
-			financings.GET("", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionRead), h.Financing.List)
-			financings.GET("/:id", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionRead), h.Financing.GetByID)
-			financings.POST("/:id/sign", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionSign), h.Financing.Sign)
-			financings.POST("/:id/installments/:no/pay", middleware.Authorize(enforcer, authz.ResourceFinancings, authz.ActionPay), h.Financing.PayInstallment)
+			financings.POST("", can(authz.ResourceFinancings, authz.ActionCreate), h.Financing.Create)
+			financings.GET("", can(authz.ResourceFinancings, authz.ActionRead), h.Financing.List)
+			financings.GET("/:id", can(authz.ResourceFinancings, authz.ActionRead), h.Financing.GetByID)
+			financings.POST("/:id/sign", can(authz.ResourceFinancings, authz.ActionSign), h.Financing.Sign)
+			financings.POST("/:id/installments/:no/pay", can(authz.ResourceFinancings, authz.ActionPay), h.Financing.PayInstallment)
 		}
 
 		// User administration: admin-only via Casbin (the user role has no
@@ -75,11 +81,11 @@ func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, enforcer
 		// admin operations.
 		users := api.Group("/users")
 		{
-			users.GET("", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionRead), h.User.GetAll)
-			users.GET("/:id", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionRead), h.User.GetByID)
-			users.PUT("/:id", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionUpdate), h.User.Update)
-			users.PUT("/:id/role", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionUpdate), h.User.UpdateRole)
-			users.DELETE("/:id", middleware.Authorize(enforcer, authz.ResourceUsers, authz.ActionDelete), h.User.Delete)
+			users.GET("", can(authz.ResourceUsers, authz.ActionRead), h.User.GetAll)
+			users.GET("/:id", can(authz.ResourceUsers, authz.ActionRead), h.User.GetByID)
+			users.PUT("/:id", can(authz.ResourceUsers, authz.ActionUpdate), h.User.Update)
+			users.PUT("/:id/role", can(authz.ResourceUsers, authz.ActionUpdate), h.User.UpdateRole)
+			users.DELETE("/:id", can(authz.ResourceUsers, authz.ActionDelete), h.User.Delete)
 		}
 	}
 }
