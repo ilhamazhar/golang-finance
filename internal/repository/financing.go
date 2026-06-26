@@ -39,10 +39,13 @@ func (r *financingRepo) FindByUser(ctx context.Context, userID uuid.UUID, page, 
 	var list []domain.Financing
 	var total int64
 
-	// Shared base so the count and the page apply the same search filter.
-	base := r.db.WithContext(ctx).Model(&domain.Financing{}).Where("user_id = ?", userID)
+	// Shared base so the count and the page apply the same search filter. The
+	// users join lets clients search and sort by owner name; Select("financings.*")
+	// stops the joined user columns (id, created_at) from scanning into the
+	// Financing struct.
+	base := financingListBase(r.db.WithContext(ctx)).Where("financings.user_id = ?", userID)
 	if search != "" {
-		base = base.Where("asset_name ILIKE ?", "%"+search+"%")
+		base = applyFinancingSearch(base, search)
 	}
 	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -53,6 +56,7 @@ func (r *financingRepo) FindByUser(ctx context.Context, userID uuid.UUID, page, 
 	// The owner is preloaded (id/name/email only — never the password hash) so
 	// the response can show who the financing belongs to.
 	err := base.
+		Select("financings.*").
 		Preload("User", ownerColumns).
 		Order(financingOrderClause(sort, order)).
 		Offset(offset).Limit(limit).
@@ -65,17 +69,31 @@ func ownerColumns(db *gorm.DB) *gorm.DB {
 	return db.Select("id", "name", "email")
 }
 
+// financingListBase starts a financing list query joined to the owner so the
+// shared search/sort helpers can reference user columns (e.g. owner name).
+func financingListBase(db *gorm.DB) *gorm.DB {
+	return db.Model(&domain.Financing{}).Joins("JOIN users ON users.id = financings.user_id")
+}
+
+// applyFinancingSearch filters by asset name OR owner name. Columns are
+// table-qualified because the owner join makes bare names ambiguous.
+func applyFinancingSearch(db *gorm.DB, search string) *gorm.DB {
+	like := "%" + search + "%"
+	return db.Where("financings.asset_name ILIKE ? OR users.name ILIKE ?", like, like)
+}
+
 // financingSortColumns whitelists the columns clients may sort by, mapping the
-// API sort key to the actual DB column. Sorting is interpolated into the SQL
-// (GORM can't parameterize identifiers), so this allowlist is what prevents
-// injection — never build the ORDER BY from raw input.
+// API sort key to the actual (table-qualified) DB column. Sorting is
+// interpolated into the SQL (GORM can't parameterize identifiers), so this
+// allowlist is what prevents injection — never build the ORDER BY from raw input.
 var financingSortColumns = map[string]string{
-	"asset_name": "asset_name",
-	"akad_type":  "akad_type",
-	"total":      "total_price",
-	"tenor":      "tenor",
-	"status":     "status",
-	"created_at": "created_at",
+	"asset_name": "financings.asset_name",
+	"akad_type":  "financings.akad_type",
+	"total":      "financings.total_price",
+	"tenor":      "financings.tenor",
+	"status":     "financings.status",
+	"created_at": "financings.created_at",
+	"owner":      "users.name",
 }
 
 // financingOrderClause resolves a client sort/order against the allowlist,
@@ -83,7 +101,7 @@ var financingSortColumns = map[string]string{
 func financingOrderClause(sort, order string) string {
 	column, ok := financingSortColumns[sort]
 	if !ok {
-		column = "created_at"
+		column = "financings.created_at"
 	}
 	if order != "asc" && order != "desc" {
 		order = "desc"
@@ -97,9 +115,9 @@ func (r *financingRepo) FindAll(ctx context.Context, page, limit int, search, so
 	var list []domain.Financing
 	var total int64
 
-	base := r.db.WithContext(ctx).Model(&domain.Financing{})
+	base := financingListBase(r.db.WithContext(ctx))
 	if search != "" {
-		base = base.Where("asset_name ILIKE ?", "%"+search+"%")
+		base = applyFinancingSearch(base, search)
 	}
 	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -107,6 +125,7 @@ func (r *financingRepo) FindAll(ctx context.Context, page, limit int, search, so
 
 	offset := (page - 1) * limit
 	err := base.
+		Select("financings.*").
 		Preload("User", ownerColumns).
 		Order(financingOrderClause(sort, order)).
 		Offset(offset).Limit(limit).
