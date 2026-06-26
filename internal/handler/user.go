@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ilhamazhar/golang-gpt/internal/domain"
@@ -19,8 +20,11 @@ func NewUserHandler(svc domain.UserService) *UserHandler {
 
 func (h *UserHandler) GetAll(c *gin.Context) {
 	page, limit := parsePagination(c)
+	search := strings.TrimSpace(c.Query("search"))
+	sort := c.Query("sort")
+	order := c.Query("order")
 
-	result, total, err := h.svc.FindAll(c.Request.Context(), page, limit)
+	result, total, err := h.svc.FindAll(c.Request.Context(), page, limit, search, sort, order)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error(), nil)
 		return

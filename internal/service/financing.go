@@ -81,7 +81,7 @@ func (s *financingService) GetByID(ctx context.Context, userID uuid.UUID, id uin
 	return &resp, nil
 }
 
-func (s *financingService) List(ctx context.Context, userID uuid.UUID, page, limit int, viewAll bool) ([]domain.FinancingResponse, int64, error) {
+func (s *financingService) List(ctx context.Context, userID uuid.UUID, page, limit int, search, sort, order string, viewAll bool) ([]domain.FinancingResponse, int64, error) {
 	// Privileged roles (admin/staff) list every financing; regular users see only their own.
 	var (
 		list  []domain.Financing
@@ -89,9 +89,9 @@ func (s *financingService) List(ctx context.Context, userID uuid.UUID, page, lim
 		err   error
 	)
 	if viewAll {
-		list, total, err = s.repo.FindAll(ctx, page, limit)
+		list, total, err = s.repo.FindAll(ctx, page, limit, search, sort, order)
 	} else {
-		list, total, err = s.repo.FindByUser(ctx, userID, page, limit)
+		list, total, err = s.repo.FindByUser(ctx, userID, page, limit, search, sort, order)
 	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch financings: %w", err)

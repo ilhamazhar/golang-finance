@@ -163,8 +163,8 @@ func ToFinancingResponse(f *Financing) FinancingResponse {
 type FinancingRepository interface {
 	Create(ctx context.Context, f *Financing) error
 	FindByID(ctx context.Context, id uint) (*Financing, error)
-	FindByUser(ctx context.Context, userID uuid.UUID, page, limit int) ([]Financing, int64, error)
-	FindAll(ctx context.Context, page, limit int) ([]Financing, int64, error)
+	FindByUser(ctx context.Context, userID uuid.UUID, page, limit int, search, sort, order string) ([]Financing, int64, error)
+	FindAll(ctx context.Context, page, limit int, search, sort, order string) ([]Financing, int64, error)
 	UpdateStatus(ctx context.Context, id uint, status FinancingStatus, signedAt *time.Time) error
 
 	// Installment access, used by the akad-signing and payment-settlement flows.
@@ -180,7 +180,7 @@ type FinancingService interface {
 	// skipped, so privileged roles (admin/staff) may read any user's financing.
 	GetByID(ctx context.Context, userID uuid.UUID, id uint, viewAll bool) (*FinancingResponse, error)
 	// List returns the caller's financings, or every financing when viewAll is true.
-	List(ctx context.Context, userID uuid.UUID, page, limit int, viewAll bool) ([]FinancingResponse, int64, error)
+	List(ctx context.Context, userID uuid.UUID, page, limit int, search, sort, order string, viewAll bool) ([]FinancingResponse, int64, error)
 	// SignAkad transitions a DRAFT financing to ACTIVE, stamping AkadSignedAt.
 	SignAkad(ctx context.Context, userID uuid.UUID, id uint) (*FinancingResponse, error)
 	// PayInstallment creates a QRIS payment for one installment of an ACTIVE financing.

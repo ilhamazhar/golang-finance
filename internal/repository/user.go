@@ -20,15 +20,44 @@ func (r *userRepo) Create(ctx context.Context, user *domain.User) error {
 	return r.db.WithContext(ctx).Create(user).Error
 }
 
-func (r *userRepo) FindAll(ctx context.Context, page, limit int) ([]domain.User, int64, error) {
+// userSortColumns whitelists the columns clients may sort by, mapping the API
+// sort key to the actual DB column. Sorting is interpolated into the SQL (GORM
+// can't parameterize identifiers), so this allowlist is what prevents injection
+// — never build the ORDER BY from raw input.
+var userSortColumns = map[string]string{
+	"name":       "name",
+	"email":      "email",
+	"role":       "role",
+	"created_at": "created_at",
+	"status":     "email_verified_at",
+}
+
+func (r *userRepo) FindAll(ctx context.Context, page, limit int, search, sort, order string) ([]domain.User, int64, error) {
 	var users []domain.User
 	var total int64
 
-	offset := (page - 1) * limit
-	if err := r.db.WithContext(ctx).Model(&domain.User{}).Count(&total).Error; err != nil {
+	// Shared base query so the count and the page apply the same search filter.
+	base := r.db.WithContext(ctx).Model(&domain.User{})
+	if search != "" {
+		like := "%" + search + "%"
+		base = base.Where("name ILIKE ? OR email ILIKE ?", like, like)
+	}
+
+	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := r.db.WithContext(ctx).Order("created_at DESC").Offset(offset).Limit(limit).Find(&users).Error
+
+	// Resolve sort against the allowlist; fall back to newest-first.
+	column, ok := userSortColumns[sort]
+	if !ok {
+		column = "created_at"
+	}
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	offset := (page - 1) * limit
+	err := base.Order(column + " " + order).Offset(offset).Limit(limit).Find(&users).Error
 	return users, total, err
 }
 

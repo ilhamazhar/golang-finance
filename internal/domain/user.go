@@ -158,13 +158,13 @@ type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
-	FindAll(ctx context.Context, page, limit int) ([]User, int64, error)
+	FindAll(ctx context.Context, page, limit int, search, sort, order string) ([]User, int64, error)
 	Update(ctx context.Context, user *User) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 type UserService interface {
-	FindAll(ctx context.Context, page, limit int) ([]UserResponse, int64, error)
+	FindAll(ctx context.Context, page, limit int, search, sort, order string) ([]UserResponse, int64, error)
 	FindByID(ctx context.Context, id uuid.UUID) (UserResponse, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateUserRequest) (UserResponse, error)
 	UpdateRole(ctx context.Context, id uuid.UUID, role Role) (UserResponse, error)

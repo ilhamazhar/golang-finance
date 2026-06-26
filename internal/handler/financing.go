@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ilhamazhar/golang-gpt/internal/domain"
@@ -131,8 +132,11 @@ func (h *FinancingHandler) List(c *gin.Context) {
 	}
 
 	page, limit := parsePagination(c)
+	search := strings.TrimSpace(c.Query("search"))
+	sort := c.Query("sort")
+	order := c.Query("order")
 
-	result, total, err := h.svc.List(c.Request.Context(), claims.UserID, page, limit, canViewAll(claims))
+	result, total, err := h.svc.List(c.Request.Context(), claims.UserID, page, limit, search, sort, order, canViewAll(claims))
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, err.Error(), nil)
 		return

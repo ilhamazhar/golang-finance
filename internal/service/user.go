@@ -17,8 +17,8 @@ func NewUserService(repo domain.UserRepository) domain.UserService {
 	return &userService{repo: repo}
 }
 
-func (s *userService) FindAll(ctx context.Context, page, limit int) ([]domain.UserResponse, int64, error) {
-	users, total, err := s.repo.FindAll(ctx, page, limit)
+func (s *userService) FindAll(ctx context.Context, page, limit int, search, sort, order string) ([]domain.UserResponse, int64, error) {
+	users, total, err := s.repo.FindAll(ctx, page, limit, search, sort, order)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch users: %w", err)
 	}
