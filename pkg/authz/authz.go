@@ -33,9 +33,10 @@ const (
 	ActionRead   = "read"
 	ActionUpdate = "update"
 	ActionDelete = "delete"
-	ActionSign   = "sign" // sign an akad (financing-specific)
-	ActionPay    = "pay"  // pay an installment (financing-specific)
-	ActionAny    = "*"
+	ActionSign    = "sign"    // sign an akad (financing-specific)
+	ActionPay     = "pay"     // pay an installment (financing-specific)
+	ActionApprove = "approve" // set terms & approve a financing application (back office)
+	ActionAny     = "*"
 )
 
 // rbacModel is an RBAC model with role inheritance and resource/action
@@ -61,11 +62,14 @@ m = g(r.sub, p.sub) && (r.obj == p.obj || p.obj == "*") && (r.act == p.act || p.
 // defaultPolicies is the permission matrix.
 //
 //   - user: self-service plus financing/payment actions on their own records.
+//     Users APPLY for financings but do not set their own margin or approve them.
 //   - staff: read-only oversight across users/financings/payments (back office),
-//     plus management of their own profile. Notably NO master-data writes
-//     (no users create/update/delete) and no financing/payment mutations.
+//     plus underwriting — they APPROVE applications (set terms). Still NO
+//     master-data writes (no users create/update/delete) and no signing/paying
+//     on a customer's behalf.
 //   - admin: full user administration and, via the admin->user grouping below,
-//     everything the user role can do.
+//     everything the user role can do; plus approve (granted explicitly, since
+//     admin inherits user — not staff).
 var defaultPolicies = [][]string{
 	{"user", ResourceProfile, ActionRead},
 	{"user", ResourceProfile, ActionUpdate},
@@ -80,9 +84,11 @@ var defaultPolicies = [][]string{
 	{"staff", ResourceProfile, ActionUpdate},
 	{"staff", ResourceUsers, ActionRead},
 	{"staff", ResourceFinancings, ActionRead},
+	{"staff", ResourceFinancings, ActionApprove},
 	{"staff", ResourcePayments, ActionRead},
 
 	{"admin", ResourceUsers, ActionAny},
+	{"admin", ResourceFinancings, ActionApprove},
 }
 
 // defaultGroupings establishes role inheritance: admin is also a user.
@@ -115,22 +121,29 @@ func NewEnforcer(db *gorm.DB) (*casbin.Enforcer, error) {
 	return enforcer, nil
 }
 
-// seed installs the default policies only when none exist yet, so it is safe to
-// run on every boot and never clobbers policies an admin changed at runtime.
+// seed makes sure every default policy and grouping line exists, adding any that
+// are missing. It is additive and idempotent: AddPolicy/AddGroupingPolicy no-op
+// on a line that is already present, so re-running is safe, and lines an admin
+// added at runtime are left untouched.
+//
+// Backfilling per line (rather than only seeding an empty table) is what lets a
+// NEW default — e.g. the financings/approve grants — reach an already-seeded
+// database on the next boot, with no manual SQL.
+//
+// Trade-off: a default line an admin deliberately deleted at runtime is restored
+// on the next boot. Defaults are the baseline the app needs to function, so
+// restoring them is intentional — customise by editing defaultPolicies, not by
+// deleting rows.
 func seed(e *casbin.Enforcer) error {
-	policies, err := e.GetPolicy()
-	if err != nil {
-		return fmt.Errorf("read policies: %w", err)
+	for _, p := range defaultPolicies {
+		if _, err := e.AddPolicy(p); err != nil {
+			return fmt.Errorf("seed policy %v: %w", p, err)
+		}
 	}
-	if len(policies) > 0 {
-		return nil
-	}
-
-	if _, err := e.AddPolicies(defaultPolicies); err != nil {
-		return fmt.Errorf("seed policies: %w", err)
-	}
-	if _, err := e.AddGroupingPolicies(defaultGroupings); err != nil {
-		return fmt.Errorf("seed groupings: %w", err)
+	for _, g := range defaultGroupings {
+		if _, err := e.AddGroupingPolicy(g); err != nil {
+			return fmt.Errorf("seed grouping %v: %w", g, err)
+		}
 	}
 	return nil
 }

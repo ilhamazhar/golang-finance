@@ -28,6 +28,7 @@ func (r *financingRepo) FindByID(ctx context.Context, id uint) (*domain.Financin
 	var f domain.Financing
 	err := r.db.WithContext(ctx).
 		Preload("User", ownerColumns).
+		Preload("Approver", ownerColumns).
 		Preload("Installments", func(db *gorm.DB) *gorm.DB {
 			return db.Order("installment_no ASC")
 		}).
@@ -146,6 +147,43 @@ func (r *financingRepo) UpdateStatus(ctx context.Context, id uint, status domain
 		return domain.ErrNotFound
 	}
 	return nil
+}
+
+// Approve locks the underwritten terms onto the financing and writes its
+// generated schedule in one transaction, so a financing is never left APPROVED
+// without its installments (or vice versa).
+func (r *financingRepo) Approve(ctx context.Context, id uint, terms domain.ApprovedTerms, schedule []domain.Installment) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updates := map[string]any{
+			"cost_price":    terms.CostPrice,
+			"margin_amount": terms.MarginAmount,
+			"total_price":   terms.TotalPrice,
+			"down_payment":  terms.DownPayment,
+			"tenor":         terms.Tenor,
+			"status":        domain.FinancingStatusApproved,
+			"approved_by":   terms.ApprovedBy,
+			"approved_at":   terms.ApprovedAt,
+		}
+		if terms.FirstDueDate != nil {
+			updates["first_due_date"] = *terms.FirstDueDate
+		}
+		res := tx.Model(&domain.Financing{}).Where("id = ?", id).Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return domain.ErrNotFound
+		}
+		for i := range schedule {
+			schedule[i].FinancingID = id
+		}
+		if len(schedule) > 0 {
+			if err := tx.Create(&schedule).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *financingRepo) FindInstallment(ctx context.Context, financingID uint, no int) (*domain.Installment, error) {

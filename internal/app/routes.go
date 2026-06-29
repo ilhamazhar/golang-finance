@@ -72,6 +72,7 @@ func registerRoutes(r *gin.Engine, h Handlers, jwtManager *jwt.Manager, enforcer
 			financings.POST("", can(authz.ResourceFinancings, authz.ActionCreate), h.Financing.Create)
 			financings.GET("", can(authz.ResourceFinancings, authz.ActionRead), h.Financing.List)
 			financings.GET("/:id", can(authz.ResourceFinancings, authz.ActionRead), h.Financing.GetByID)
+			financings.POST("/:id/approve", can(authz.ResourceFinancings, authz.ActionApprove), h.Financing.Approve)
 			financings.POST("/:id/sign", can(authz.ResourceFinancings, authz.ActionSign), h.Financing.Sign)
 			financings.POST("/:id/installments/:no/pay", can(authz.ResourceFinancings, authz.ActionPay), h.Financing.PayInstallment)
 		}

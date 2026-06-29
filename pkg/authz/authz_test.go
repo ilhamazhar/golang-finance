@@ -44,6 +44,9 @@ func TestPolicyMatrix(t *testing.T) {
 		{"user creates payment", "user", ResourcePayments, ActionCreate, true},
 		{"user reads payment", "user", ResourcePayments, ActionRead, true},
 
+		// --- user: cannot approve their own application (margin is the institution's) ---
+		{"user cannot approve financing", "user", ResourceFinancings, ActionApprove, false},
+
 		// --- user: denied all user administration ---
 		{"user cannot list users", "user", ResourceUsers, ActionRead, false},
 		{"user cannot update users", "user", ResourceUsers, ActionUpdate, false},
@@ -59,15 +62,17 @@ func TestPolicyMatrix(t *testing.T) {
 		{"admin inherits financing create", "admin", ResourceFinancings, ActionCreate, true},
 		{"admin inherits profile read", "admin", ResourceProfile, ActionRead, true},
 		{"admin inherits payment read", "admin", ResourcePayments, ActionRead, true},
+		{"admin approves financing", "admin", ResourceFinancings, ActionApprove, true},
 
-		// --- staff: read-only oversight + own profile ---
+		// --- staff: read-only oversight + own profile + underwriting (approve) ---
 		{"staff reads users", "staff", ResourceUsers, ActionRead, true},
 		{"staff reads financings", "staff", ResourceFinancings, ActionRead, true},
+		{"staff approves financing", "staff", ResourceFinancings, ActionApprove, true},
 		{"staff reads payments", "staff", ResourcePayments, ActionRead, true},
 		{"staff reads own profile", "staff", ResourceProfile, ActionRead, true},
 		{"staff updates own profile", "staff", ResourceProfile, ActionUpdate, true},
 
-		// --- staff: denied all master-data writes and customer actions ---
+		// --- staff: denied master-data writes and the customer's own actions ---
 		{"staff cannot create users", "staff", ResourceUsers, ActionCreate, false},
 		{"staff cannot update users", "staff", ResourceUsers, ActionUpdate, false},
 		{"staff cannot delete users", "staff", ResourceUsers, ActionDelete, false},

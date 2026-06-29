@@ -29,18 +29,21 @@ func (f *fakeFinancingRepo) FindByID(_ context.Context, id uint) (*domain.Financ
 	return fin, nil
 }
 
-func (f *fakeFinancingRepo) FindByUser(_ context.Context, _ uuid.UUID, _, _ int) ([]domain.Financing, int64, error) {
+func (f *fakeFinancingRepo) FindByUser(_ context.Context, _ uuid.UUID, _, _ int, _, _, _ string) ([]domain.Financing, int64, error) {
 	f.lastAll = false
 	return f.byUser, int64(len(f.byUser)), nil
 }
 
-func (f *fakeFinancingRepo) FindAll(_ context.Context, _, _ int) ([]domain.Financing, int64, error) {
+func (f *fakeFinancingRepo) FindAll(_ context.Context, _, _ int, _, _, _ string) ([]domain.Financing, int64, error) {
 	f.lastAll = true
 	return f.all, int64(len(f.all)), nil
 }
 
 func (f *fakeFinancingRepo) Create(context.Context, *domain.Financing) error { return nil }
 func (f *fakeFinancingRepo) UpdateStatus(context.Context, uint, domain.FinancingStatus, *time.Time) error {
+	return nil
+}
+func (f *fakeFinancingRepo) Approve(context.Context, uint, domain.ApprovedTerms, []domain.Installment) error {
 	return nil
 }
 func (f *fakeFinancingRepo) FindInstallment(context.Context, uint, int) (*domain.Installment, error) {
@@ -98,7 +101,7 @@ func (f *fakeUserRepo) Create(context.Context, *domain.User) error { return nil 
 func (f *fakeUserRepo) FindByEmail(context.Context, string) (*domain.User, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeUserRepo) FindAll(context.Context, int, int) ([]domain.User, int64, error) {
+func (f *fakeUserRepo) FindAll(context.Context, int, int, string, string, string) ([]domain.User, int64, error) {
 	return nil, 0, nil
 }
 func (f *fakeUserRepo) Delete(context.Context, uuid.UUID) error { return nil }
@@ -159,7 +162,7 @@ func TestFinancingService_List_AdminSeesAll(t *testing.T) {
 	svc := NewFinancingService(repo, nil)
 
 	t.Run("user sees only their own", func(t *testing.T) {
-		_, total, err := svc.List(context.Background(), owner, 1, 10, false)
+		_, total, err := svc.List(context.Background(), owner, 1, 10, "", "", "", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -172,7 +175,7 @@ func TestFinancingService_List_AdminSeesAll(t *testing.T) {
 	})
 
 	t.Run("admin sees all", func(t *testing.T) {
-		result, total, err := svc.List(context.Background(), owner, 1, 10, true)
+		result, total, err := svc.List(context.Background(), owner, 1, 10, "", "", "", true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

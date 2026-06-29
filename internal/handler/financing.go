@@ -61,6 +61,41 @@ func (h *FinancingHandler) GetByID(c *gin.Context) {
 	response.OK(c, http.StatusOK, "Financing retrieved", result)
 }
 
+func (h *FinancingHandler) Approve(c *gin.Context) {
+	claims := middleware.ClaimsFromContext(c)
+	if claims == nil {
+		response.Fail(c, http.StatusUnauthorized, "unauthorized", nil)
+		return
+	}
+
+	id, err := parseUintParam(c, "id")
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid id", nil)
+		return
+	}
+
+	var req domain.ApproveFinancingRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.svc.Approve(c.Request.Context(), claims.UserID, id, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			response.Fail(c, http.StatusNotFound, "financing not found", nil)
+		case errors.Is(err, domain.ErrFinancingNotApplied):
+			response.Fail(c, http.StatusConflict, err.Error(), nil)
+		default:
+			// No downstream dependency here — remaining failures are bad terms
+			// (e.g. down payment exceeds cost), so surface them as 400.
+			response.Fail(c, http.StatusBadRequest, err.Error(), nil)
+		}
+		return
+	}
+	response.OK(c, http.StatusOK, "Financing approved", result)
+}
+
 func (h *FinancingHandler) Sign(c *gin.Context) {
 	claims := middleware.ClaimsFromContext(c)
 	if claims == nil {
@@ -115,7 +150,8 @@ func writeFinancingError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		response.Fail(c, http.StatusNotFound, "financing not found", nil)
-	case errors.Is(err, domain.ErrFinancingNotDraft),
+	case errors.Is(err, domain.ErrFinancingNotApplied),
+		errors.Is(err, domain.ErrFinancingNotApproved),
 		errors.Is(err, domain.ErrFinancingNotActive),
 		errors.Is(err, domain.ErrInstallmentPaid):
 		response.Fail(c, http.StatusConflict, err.Error(), nil)

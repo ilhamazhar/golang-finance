@@ -19,27 +19,15 @@ func NewFinancingService(repo domain.FinancingRepository, payments domain.Paymen
 	return &financingService{repo: repo, payments: payments}
 }
 
-// CreateMurabahah locks the total price (cost + margin) at creation, generates
-// the immutable installment schedule, and persists both atomically as a DRAFT.
-// The akad is not yet signed — that is a separate step before disbursement.
+// CreateMurabahah records a customer's financing application as APPLIED. The
+// margin and the installment schedule are NOT set here — they are determined by
+// staff/admin at approval, since the institution (not the applicant) sets its
+// profit. TotalPrice provisionally equals CostPrice until a margin is approved.
 func (s *financingService) CreateMurabahah(ctx context.Context, userID uuid.UUID, req domain.CreateMurabahahRequest) (*domain.FinancingResponse, error) {
-	totalPrice := req.CostPrice + req.MarginAmount
-
-	// Default the first due date to one month out when the caller omits it.
-	firstDue := time.Now().AddDate(0, 1, 0)
-	if req.FirstDueDate != nil {
-		firstDue = *req.FirstDueDate
-	}
-
-	schedule, err := GenerateMurabahahSchedule(ScheduleParams{
-		CostPrice:    req.CostPrice,
-		MarginAmount: req.MarginAmount,
-		DownPayment:  req.DownPayment,
-		Tenor:        req.Tenor,
-		FirstDueDate: firstDue,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate schedule: %w", err)
+	// A down payment can never exceed the cost price (it is applied against the
+	// principal). Validate up front; the full schedule is checked at approval.
+	if req.DownPayment > req.CostPrice {
+		return nil, errors.New("down payment cannot exceed the cost price")
 	}
 
 	financing := &domain.Financing{
@@ -47,13 +35,13 @@ func (s *financingService) CreateMurabahah(ctx context.Context, userID uuid.UUID
 		AkadType:     domain.AkadMurabahah,
 		AssetName:    req.AssetName,
 		CostPrice:    req.CostPrice,
-		MarginAmount: req.MarginAmount,
-		TotalPrice:   totalPrice,
+		MarginAmount: 0,
+		TotalPrice:   req.CostPrice,
 		DownPayment:  req.DownPayment,
 		Tenor:        req.Tenor,
 		Currency:     "IDR",
-		Status:       domain.FinancingStatusDraft,
-		Installments: schedule,
+		Status:       domain.FinancingStatusApplied,
+		FirstDueDate: req.FirstDueDate,
 	}
 	if err := s.repo.Create(ctx, financing); err != nil {
 		return nil, fmt.Errorf("failed to create financing: %w", err)
@@ -103,15 +91,73 @@ func (s *financingService) List(ctx context.Context, userID uuid.UUID, page, lim
 	return result, total, nil
 }
 
-// SignAkad signs a DRAFT financing, transitioning it to ACTIVE so installments
-// can be paid. Signing is the point at which the obligation becomes binding.
+// Approve sets the underwritten terms on an APPLIED financing, generates its
+// immutable schedule, stamps the approver (approverID) and time, and transitions
+// it to APPROVED. It is a back-office action (staff/admin) performed on any
+// user's application, so it is not ownership-scoped.
+func (s *financingService) Approve(ctx context.Context, approverID uuid.UUID, id uint, req domain.ApproveFinancingRequest) (*domain.FinancingResponse, error) {
+	f, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	if f.Status != domain.FinancingStatusApplied {
+		return nil, domain.ErrFinancingNotApplied
+	}
+
+	// First due date: the approver's choice wins, else the date applied for, else
+	// default to one month out.
+	firstDue := time.Now().AddDate(0, 1, 0)
+	switch {
+	case req.FirstDueDate != nil:
+		firstDue = *req.FirstDueDate
+	case f.FirstDueDate != nil:
+		firstDue = *f.FirstDueDate
+	}
+
+	totalPrice := req.CostPrice + req.MarginAmount
+	schedule, err := GenerateMurabahahSchedule(ScheduleParams{
+		CostPrice:    req.CostPrice,
+		MarginAmount: req.MarginAmount,
+		DownPayment:  req.DownPayment,
+		Tenor:        req.Tenor,
+		FirstDueDate: firstDue,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate schedule: %w", err)
+	}
+
+	terms := domain.ApprovedTerms{
+		CostPrice:    req.CostPrice,
+		MarginAmount: req.MarginAmount,
+		TotalPrice:   totalPrice,
+		DownPayment:  req.DownPayment,
+		Tenor:        req.Tenor,
+		FirstDueDate: &firstDue,
+		ApprovedBy:   approverID,
+		ApprovedAt:   time.Now(),
+	}
+	if err := s.repo.Approve(ctx, id, terms, schedule); err != nil {
+		return nil, fmt.Errorf("failed to approve financing: %w", err)
+	}
+
+	f, err = s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload financing: %w", err)
+	}
+	resp := domain.ToFinancingResponse(f)
+	return &resp, nil
+}
+
+// SignAkad signs an APPROVED financing, transitioning it to ACTIVE so installments
+// can be paid. Signing is the point at which the obligation becomes binding, and
+// only the owner may sign their own akad.
 func (s *financingService) SignAkad(ctx context.Context, userID uuid.UUID, id uint) (*domain.FinancingResponse, error) {
 	f, err := s.repo.FindByID(ctx, id)
 	if err != nil || f.UserID != userID {
 		return nil, domain.ErrNotFound
 	}
-	if f.Status != domain.FinancingStatusDraft {
-		return nil, domain.ErrFinancingNotDraft
+	if f.Status != domain.FinancingStatusApproved {
+		return nil, domain.ErrFinancingNotApproved
 	}
 
 	now := time.Now()
